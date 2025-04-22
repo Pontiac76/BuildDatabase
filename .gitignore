@@ -1,0 +1,66 @@
+# Lazarus IDE backup and autosave files
+*.bak
+*.~*
+*.ppu
+*.o
+*.a
+*.compiled
+*.or
+*.rst
+*.s
+*.swp
+*.dcu
+*.dsk
+*.map
+
+# Lazarus form files auto-generated
+*.lfm.bak
+*.lrs
+*.lps
+*.opt
+
+# Lazarus build output (object and compiled binary directories)
+lib/
+backup/
+build/
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.app
+
+# SQLite database files (if used in development)
+*.sqlite3
+*.sqlite
+*.db
+*.db-shm
+*.db-wal
+
+# IDE/project metadata (can be committed if you want Lazarus project structure versioned)
+*.compiled
+*.identcache
+*.order
+*.todo
+*.stat
+*.lpi.bak
+*.lpr.bak
+
+# Logs and debug artifacts
+*.log
+*.out
+*.stackdump
+*.core
+*.pid
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Git conflict backups
+*.orig
+*.rej
+
+# Optional: Lazarus IDE user prefs (uncomment to ignore user configs)
+# *.lps
