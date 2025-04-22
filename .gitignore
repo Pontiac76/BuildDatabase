@@ -64,3 +64,6 @@ desktop.ini
 
 # Optional: Lazarus IDE user prefs (uncomment to ignore user configs)
 # *.lps
+Retired.inc
+sql_debug.txt
+.vscode/settings.json
