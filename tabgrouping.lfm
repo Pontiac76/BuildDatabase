@@ -1,0 +1,33 @@
+object Frame1: TFrame1
+  Left = 0
+  Height = 1214
+  Top = 0
+  Width = 609
+  ClientHeight = 1214
+  ClientWidth = 609
+  TabOrder = 0
+  DesignLeft = 633
+  object GlobalDetails: TPanel
+    Left = 0
+    Height = 160
+    Top = 0
+    Width = 609
+    Align = alTop
+    BevelColor = clRed
+    BevelWidth = 2
+    Caption = ' '
+    Font.Quality = fqAntialiased
+    ParentFont = False
+    TabOrder = 0
+  end
+  object sbGroupScroll: TScrollBox
+    Left = 0
+    Height = 1054
+    Top = 160
+    Width = 609
+    HorzScrollBar.Page = 1
+    VertScrollBar.Page = 1
+    Align = alClient
+    TabOrder = 1
+  end
+end
