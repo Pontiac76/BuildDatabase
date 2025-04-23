@@ -4,9 +4,9 @@ unit frmMain;
 interface
 
 uses
-  Classes,SysUtils,Forms,Controls,Graphics,Dialogs,Menus,ComCtrls,StdCtrls,
-  ExtCtrls,ExtendedTabControls,SynEdit,RTTICtrls,LCLType,Buttons,ColorBox,Spin,
-  RegExpr,SQLite3Conn,SQLite3,process,SQLDB;
+  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, Menus, ComCtrls, StdCtrls,
+  ExtCtrls, ExtendedTabControls, SynEdit, RTTICtrls, LCLType, Buttons, ColorBox, Spin,
+  RegExpr, SQLite3Conn, SQLite3, process, SQLDB;
 
 type
   TQRType = (QRCode, QRURL, QRPhoneNumber);
@@ -86,6 +86,8 @@ type
     procedure MenuItemClick (Sender: TObject);
     procedure PopulateSpecsPane (DeviceID: integer);
     procedure PopulateSpecsPane (DeviceID: integer; const TabShortName: string);
+    procedure PopulateComponentList (ComponentName: string; TargetListBox: TListBox);
+
     function PromptAndValidateQRCodeAndTitle (TabCaption: string; QRTypes: TQRType; out QRString, Title: string): boolean;
     function ValidateQRCode (QRType: TQRType; QRString: string): boolean;
     function HandleBuildComponentAction (Mode, ShortName: string; OptionalDeviceID: integer = -1): boolean;
@@ -432,11 +434,6 @@ begin
   end;
 end;
 
-procedure TForm1.FormActivate (Sender: TObject);
-begin
-
-end;
-
 procedure TForm1.FormDestroy (Sender: TObject);
 begin
   // Clean up everything in the tab sheets
@@ -652,6 +649,127 @@ begin
     end;
   finally
     EndQuery(Query);
+  end;
+end;
+
+procedure TForm1.PopulateSpecsPane (DeviceID: integer);
+var
+  Query: TSQLQuery;
+  FieldName, FieldValue: string;
+  YPos, i: integer;
+  LabelField: TLabel;
+  EditField: TEdit;
+  ActiveTab: TTabSheet;
+  StrippedTabName: string;
+  SpecsGroup: TGroupBox;
+  Ini: TIniFile;
+  IsDynamicTab: boolean;
+begin
+  // Get the currently selected tab
+  ActiveTab := PageControl1.ActivePage;
+  if ActiveTab = nil then begin
+    Exit;
+  end;
+
+  // Strip spaces from tab caption to match the expected naming convention
+  StrippedTabName := StringReplace(ActiveTab.Caption, ' ', '', [rfReplaceAll]);
+
+  // Check if this is a dynamic tab
+  IsDynamicTab := False;
+  Ini := TIniFile.Create('Structure.ini');
+  try
+    IsDynamicTab := Ini.ValueExists('ORDER', ActiveTab.Caption);
+  finally
+    Ini.Free;
+  end;
+
+  if not IsDynamicTab then begin
+    IsDynamicTab := ActiveTab.Name.EndsWith('_T');
+  end;
+
+  // If it's not dynamic, exit (static tabs like "Build List" don't have specs)
+  if not IsDynamicTab then begin
+    Exit;
+  end;
+
+  // Find the dynamically created Specs group box in this tab
+  SpecsGroup := TGroupBox(ActiveTab.FindComponent('gb' + StrippedTabName + 'Specs'));
+  if SpecsGroup = nil then begin
+    Exit;
+  end;  // Prevent crashes if the component doesn’t exist
+
+  // Clear previous fields in the Specs panel
+  for i := SpecsGroup.ControlCount - 1 downto 0 do begin
+    SpecsGroup.Controls[i].Free;
+  end;
+
+  // Query the database for this specific device
+  Query := NewQuery(S3DB);
+  try
+    Query.SQL.Text := 'SELECT * FROM Device_' + StrippedTabName + ' WHERE DeviceID = :DeviceID';
+    Query.ParamByName('DeviceID').AsInteger := DeviceID;
+    Query.Open;
+
+    if Query.RecordCount = 0 then begin
+      Exit;
+    end;
+
+    YPos := 10;
+
+    for i := 0 to Query.FieldCount - 1 do begin
+      FieldName := Query.Fields[i].FieldName;
+      FieldValue := Query.Fields[i].AsString;
+
+      // Skip DeviceID (read-only)
+      if FieldName = 'DeviceID' then begin
+        Continue;
+      end;
+
+      // Create a label
+      LabelField := TLabel.Create(SpecsGroup);
+      LabelField.Parent := SpecsGroup;
+      LabelField.Caption := FieldName + ':';
+      LabelField.Top := YPos;
+      LabelField.Left := 10;
+
+      // Create an input field
+      EditField := TEdit.Create(SpecsGroup);
+      EditField.Parent := SpecsGroup;
+      EditField.Text := FieldValue;
+      EditField.Top := YPos;
+      EditField.Left := 120;
+      EditField.Width := 200;
+      EditField.Name := 'edit_' + FieldName;
+
+      YPos := YPos + EditHeight;
+    end;
+
+    Query.Close;
+  finally
+    EndQuery(Query);
+  end;
+end;
+
+procedure TForm1.PopulateComponentList (ComponentName: string; TargetListBox: TListBox);
+var
+  qr: TSQLQuery;
+  SQL: string;
+begin
+  TargetListBox.Clear;
+
+  SQL := 'SELECT QRCode, Name FROM ' + ComponentName + ' ORDER BY Name ASC';
+
+  qr := NewQuery(DBConnection);
+  try
+    qr.SQL.Text := SQL;
+    qr.Open;
+
+    while not qr.EOF do begin
+      TargetListBox.Items.Add(qr.FieldByName('QRCode').AsString + ' - ' + qr.FieldByName('Name').AsString);
+      qr.Next;
+    end;
+  finally
+    EndQuery(qr);
   end;
 end;
 
@@ -877,104 +995,6 @@ begin
     q.Close;
   end;
   Memo1.Modified := False;
-end;
-
-procedure TForm1.PopulateSpecsPane (DeviceID: integer);
-var
-  Query: TSQLQuery;
-  FieldName, FieldValue: string;
-  YPos, i: integer;
-  LabelField: TLabel;
-  EditField: TEdit;
-  ActiveTab: TTabSheet;
-  StrippedTabName: string;
-  SpecsGroup: TGroupBox;
-  Ini: TIniFile;
-  IsDynamicTab: boolean;
-begin
-  // Get the currently selected tab
-  ActiveTab := PageControl1.ActivePage;
-  if ActiveTab = nil then begin
-    Exit;
-  end;
-
-  // Strip spaces from tab caption to match the expected naming convention
-  StrippedTabName := StringReplace(ActiveTab.Caption, ' ', '', [rfReplaceAll]);
-
-  // Check if this is a dynamic tab
-  IsDynamicTab := False;
-  Ini := TIniFile.Create('Structure.ini');
-  try
-    IsDynamicTab := Ini.ValueExists('ORDER', ActiveTab.Caption);
-  finally
-    Ini.Free;
-  end;
-
-  if not IsDynamicTab then begin
-    IsDynamicTab := ActiveTab.Name.EndsWith('_T');
-  end;
-
-  // If it's not dynamic, exit (static tabs like "Build List" don't have specs)
-  if not IsDynamicTab then begin
-    Exit;
-  end;
-
-  // Find the dynamically created Specs group box in this tab
-  SpecsGroup := TGroupBox(ActiveTab.FindComponent('gb' + StrippedTabName + 'Specs'));
-  if SpecsGroup = nil then begin
-    Exit;
-  end;  // Prevent crashes if the component doesn’t exist
-
-  // Clear previous fields in the Specs panel
-  for i := SpecsGroup.ControlCount - 1 downto 0 do begin
-    SpecsGroup.Controls[i].Free;
-  end;
-
-  // Query the database for this specific device
-  Query := NewQuery(S3DB);
-  try
-    Query.SQL.Text := 'SELECT * FROM Device_' + StrippedTabName + ' WHERE DeviceID = :DeviceID';
-    Query.ParamByName('DeviceID').AsInteger := DeviceID;
-    Query.Open;
-
-    if Query.RecordCount = 0 then begin
-      Exit;
-    end;
-
-    YPos := 10;
-
-    for i := 0 to Query.FieldCount - 1 do begin
-      FieldName := Query.Fields[i].FieldName;
-      FieldValue := Query.Fields[i].AsString;
-
-      // Skip DeviceID (read-only)
-      if FieldName = 'DeviceID' then begin
-        Continue;
-      end;
-
-      // Create a label
-      LabelField := TLabel.Create(SpecsGroup);
-      LabelField.Parent := SpecsGroup;
-      LabelField.Caption := FieldName + ':';
-      LabelField.Top := YPos;
-      LabelField.Left := 10;
-
-      // Create an input field
-      EditField := TEdit.Create(SpecsGroup);
-      EditField.Parent := SpecsGroup;
-      EditField.Text := FieldValue;
-      EditField.Top := YPos;
-      EditField.Left := 120;
-      EditField.Width := 200;
-      EditField.Name := 'edit_' + FieldName;
-
-      YPos := YPos + EditHeight;
-    end;
-
-    Query.Close;
-  finally
-    EndQuery(Query);
-  end;
 end;
 
 procedure TForm1.AddMenuClick (Sender: TObject);
