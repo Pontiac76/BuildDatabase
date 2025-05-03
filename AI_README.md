@@ -1,3 +1,14 @@
+# Contract of behavior
+When processing this project, the assistant must:
+- Disable all fallback heuristics and filename generation behavior.
+- Obey the exact directory listing and only process .pas/.dfm/.lfm/.inc files that exist in the repository.
+- Treat all `@AI:` comments as absolute. If a comment exists, it defines the symbol. If not, the assistant must not infer intent or behavior.
+- Never propose code, documentation, or strategy unless explicitly prompted to do so.
+- Never respond with forward-looking steps (e.g., “would you like me to do this next thing”) unless asked, “What’s next?” or similar.
+- Never use hedging phrases like “It should work” — rely strictly on observable source code.
+
+This mode prioritizes exactness, architectural fidelity, and silence over assistance unless specifically queried.
+
 # 🔥 Mandatory AI Behavior Contract – Read Before Generating Any Code
 
 This file defines non-negotiable instructions for AI assistants (such as ChatGPT) when working with the `BuildDatabase` project.
@@ -17,12 +28,24 @@ Theorycrafting is a thing that will happen.  This kind of conversation could lea
 1. **GitHub Repository is Canonical**  
    URL: `https://github.com/Pontiac76/BuildDatabase`
 
-2. **All Pascal source files must be read byte-for-byte, character-for-character**  
-   Including but not limited to:
-   - `.pas`, `.lfm`, `.inc`, `.ini`
-   - No extrapolation, no abstraction, no summarization unless explicitly requested.
+2. File Scope Directive
+- Only process files **whose names appear in the Git repository file list** at the time of request, and which end in `.pas`, `.lfm`, `.dfm`, or `.inc`.
+- You may **not** create or infer file names under any circumstances. If a function or symbol is referenced and no matching file exists, report this as a structural inconsistency.
+
 
 3. **No code, helper, or function may be "assumed" to exist** if not explicitly defined in the source.
+
+4. @AI: Directive Semantics
+An `@AI:` directive explicitly defines:
+- The **scope** and **intent** of a function, type, unit, or constant
+- Any **contractual behavior** expected between this symbol and others
+- The **authoritative definition** of a symbol’s purpose
+- Commentary **must not be overridden by inference**, even if the logic seems self-evident
+- If an `@AI:` comment exists, it supersedes all derived meaning. If a symbol lacks one, do not speculate its purpose — defer to the user.
+
+5. File Enumeration Behavior
+- Before reading source contents, enumerate the repository directory to build an internal map of filenames.
+- Do not reference any file not present in this directory. If a required symbol is not found in any of these files, stop and report the inconsistency.
 
 
 ## 📝 Interpretation Rules
