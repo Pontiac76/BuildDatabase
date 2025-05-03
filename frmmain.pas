@@ -1,3 +1,9 @@
+(*
+@AI:unit-summary:
+- This Pascal unit defines a graphical user interface for managing a build list of components, allowing users to add, edit, and delete entries associated with various hardware components.
+- It interacts with a SQLite database to store and retrieve component details, including QR codes and titles, and dynamically generates UI elements based on the data structure defined in an INI file.
+- The unit also handles user input validation and updates the UI accordingly based on user actions.
+*)
 unit frmMain;
 {$mode objfpc}{$H+}
 
@@ -5,8 +11,8 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, Menus, ComCtrls, StdCtrls,
-  ExtCtrls, ExtendedTabControls, SynEdit, RTTICtrls, LCLType, Buttons, ColorBox, Spin,
-  RegExpr, SQLite3Conn, SQLite3, process, SQLDB;
+  ExtCtrls, LCLType, Buttons,
+  RegExpr, SQLite3Conn, SQLite3, SQLDB;
 
 type
   TQRType = (QRCode, QRURL, QRPhoneNumber);
@@ -56,7 +62,6 @@ type
     TabSheet2: TTabSheet;
     tsBuildSheet: TTabSheet;
     procedure ApplicationProperties1Idle (Sender: TObject; var Done: boolean);
-    procedure FormActivate (Sender: TObject);
     procedure FormCreate (Sender: TObject);
     procedure FormDestroy (Sender: TObject);
     procedure lbBuildListClick (Sender: TObject);
@@ -117,6 +122,12 @@ const
 
 
 function FindAnyComponent (Root: TComponent; const Name: string): TComponent;
+(*
+@AI:summary: This function likely searches for a component by its name within a specified root component.
+@AI:params: Root: The root component from which the search for the named component begins.
+@AI:params: Name: The name of the component to be searched for within the root component.
+@AI:returns: The function is expected to return the found component or nil if not found.
+*)
 var
   i: integer;
   Found: TComponent;
@@ -136,6 +147,11 @@ begin
 end;
 
 function IsDynamicTab (const TabCaption: string): boolean;
+(*
+@AI:summary: Looks through structure.ini in the [Order] section to find if the tabs caption is something we create dynamically
+@AI:params: TabCaption: The caption of the tab to be evaluated for dynamic status.
+@AI:returns: Returns true if the tab is dynamic, otherwise false.
+*)
 var
   Ini: TIniFile;
   DynamicTabs: TStringList;
@@ -154,6 +170,12 @@ begin
 end;
 
 procedure DeleteChildObjects (Sender: TComponent);
+(*
+@AI:summary: Given the Sender as the root control, this function will delete all tWinControls that are built and have their ownership set to the Sender control at runtime.
+@AI:params: Sender: The component whose child objects are to be deleted.
+@AI:returns: No output is expected.
+TODO: Rewrite this to get the whole "Exit" stuff out of this code.  Horrible code style!
+*)
 var
   i, CountBefore: integer;
   ControlList: array of TControl;
@@ -187,7 +209,11 @@ begin
 end;
 
 procedure TForm1.MenuItem8Click (Sender: TObject);
-var
+(*
+@AI:summary: This badly named function is for the menu item to refresh the build list ListBox on the form UI.  This function will re-highlight the last selected build item on reload if the item still exists in the [BuildList] SQLite table
+@AI:params: Sender: The object that triggered the event, typically the menu item itself.
+@AI:returns:
+*)      var
   CurrentItem: TObject;
 begin
   CurrentItem := nil;
@@ -205,6 +231,14 @@ begin
 end;
 
 function TForm1.PromptAndValidateQRCodeAndTitle (TabCaption: string; QRTypes: TQRType; out QRString, Title: string): boolean;
+(*
+@AI:summary: This function prompts the user to input a QR code and a title, then validates the input.
+@AI:params: TabCaption: The caption for the tab, likely used to inform the user about the context of the prompt.
+@AI:params: QRTypes: Specifies the type of QR code to validate against, ensuring the correct format is used.
+@AI:params: QRString: An output parameter that will hold the validated QR code string provided by the user.
+@AI:params: Title: An output parameter that will hold the validated title string provided by the user.
+@AI:returns: A boolean indicating whether the validation was successful or not.
+*)
 var
   BuildQuestions: array[0..1] of string;
   BuildAnswers: array[0..1] of string;
@@ -264,6 +298,12 @@ begin
 end;
 
 function TForm1.ValidateQRCode (QRType: TQRType; QRString: string): boolean;
+(*
+@AI:summary: Validates a QR code based on its type and content.
+@AI:params: QRType: Specifies the type of QR code to validate.
+@AI:params: QRString: The actual string content of the QR code to be validated.
+@AI:returns: Returns true if the QR code is valid, otherwise false.
+*)
 begin
   Result := False;
 
@@ -283,6 +323,14 @@ begin
 end;
 
 function TForm1.HandleBuildComponentAction (Mode, ShortName: string; OptionalDeviceID: integer = -1): boolean;
+(*
+TODO: Review what the status of this function is specifically.
+@AI:summary: This function will call the appropriate add/edit/delete for components listed in a build.
+@AI:params: Mode: Specifies the action mode for building the component.
+@AI:params: ShortName: Represents the name of the component to be built.
+@AI:params: OptionalDeviceID: An optional identifier for a device associated with the component, defaulting to -1 if not provided.
+@AI:returns: Returns a boolean indicating the success or failure of the component build action.
+*)
 begin
   Result := False;
 
@@ -296,6 +344,11 @@ begin
 end;
 
 procedure TForm1.mnuAddBuildClick (Sender: TObject);
+(*
+@AI:summary: This function prompts the user to provide a QR code (YYMM-### format) and a general description of the PC build.
+@AI:params: Sender: The object that triggered the event, typically the menu item itself.
+@AI:returns:
+*)
 var
   BuildQuestions: array[0..1] of string;
   BuildAnswers: array[0..1] of string;
@@ -370,12 +423,21 @@ begin
 end;
 
 procedure TForm1.mnuBuildListClick (Sender: TObject);
+(*
+@AI:summary: Sets the Build List menu items Enabled property to allow or deny if the system is capable of deleting that build item.  If no build is selected in the list, the delete button is disabled.
+@AI:params: Sender: The object that triggered the event, typically the menu item itself.
+@AI:returns:
+*)
 begin
   mnuDeleteBuild.Enabled := lbBuildList.ItemIndex <> -1;
-
 end;
 
 procedure TForm1.mnuDeleteBuildClick (Sender: TObject);
+(*
+@AI:summary: This function will ask the user to confirm if the build is to be deleted from the database.  This will release the associated parts back into the queue to be put into other builds.
+@AI:params: Sender: The object that triggered the event, typically the menu item itself.
+@AI:returns:
+*)
 var
   idx: integer;
   q: TSQLQuery;
@@ -392,6 +454,11 @@ begin
 end;
 
 procedure TForm1.FormCreate (Sender: TObject);
+(*
+@AI:summary: Initializes the form when it is created.  Establishes the run-time dynamically created tabs.  This also handles creating menu items for each selected tab so that each tab has its own Add/Edit/Delete functionality.
+@AI:params: Sender: The object that triggered the form creation event.
+@AI:returns:
+*)
 var
   x, y: integer;
   gb: TGroupBox;
@@ -427,6 +494,15 @@ begin
 end;
 
 procedure TForm1.ApplicationProperties1Idle (Sender: TObject; var Done: boolean);
+(*
+@AI:summary: This function handles idle events for the application, potentially performing tasks when the application is not busy.
+@AI:functionality:
+- Enables/Disables the Memo1 field if something is selected in the BuildList Listbox on the forms UI
+- If no item is selected, and the contents of the memo is not clear, then clear the memo.
+@AI:params: Sender: The object that triggered the idle event, typically the application form.
+@AI:params: Done: A boolean variable that indicates whether the idle processing is complete or if further processing is needed.
+@AI:returns:
+*)
 begin
   Memo1.Enabled := lbBuildList.ItemIndex <> -1;
   if (lbBuildList.ItemIndex = -1) and (Memo1.Text <> '') then begin
@@ -435,7 +511,13 @@ begin
 end;
 
 procedure TForm1.FormDestroy (Sender: TObject);
+(*
+@AI:summary: This function likely handles cleanup tasks when the form is destroyed.
+@AI:params: Sender: The object that triggered the event, typically the form itself.
+@AI:returns:
+*)
 begin
+  // TODO: Really gotta validate this cleanup process.
   // Clean up everything in the tab sheets
   while ListOfCustomObjects.Count > 0 do begin
   end;
@@ -446,6 +528,11 @@ begin
 end;
 
 procedure TForm1.lbBuildListClick (Sender: TObject);
+(*
+@AI:summary: Updates the Build sheet to indicate what components are in the selected build.
+@AI:params: Sender: The object that triggered the event, typically the list box itself.
+@AI:returns:
+*)
 var
   QRForBuild: string;
 begin
@@ -457,6 +544,11 @@ begin
 end;
 
 procedure TForm1.Memo1Exit (Sender: TObject);
+(*
+@AI:summary: If there has been any change to the Memo field for this build, update the SQLite table with the note details.
+@AI:params: Sender: The object that triggered the exit event, typically the memo component itself.
+@AI:returns:
+*)
 var
   q: TSQLQuery;
 begin
@@ -474,12 +566,22 @@ begin
 end;
 
 procedure TForm1.mnuResetManifestClick (Sender: TObject);
+(*
+@AI:summary: ##This function is currently a NO-OP function.##  Its intent will be used to reset the build so that it has no components associated to it.  Useful when migrating components from one PC case to another.
+@AI:params: Sender: The object that triggered the event, typically the menu item itself.
+@AI:returns:
+*)
 begin
   // This will wipe out ALL components to this build
   // Use of this will not delete components, just "unassociate" them to a build
 end;
 
 procedure TForm1.mnuAddToBuildManifestClick (Sender: TObject);
+(*
+@AI:summary: ##This function is currently a NO-OP function.##  This functions intent is to bring up a dialog box that will allow the user to scan several QR codes at once, and the software will then associate the QR codes to whatever build is found during all the scans.
+@AI:params: Sender: The object that triggered the event, typically the menu item itself.
+@AI:returns:
+*)
 begin
   // This will pop up a dialog where the user can zap all the QR codes into a box
   // On submission, each QR will be added to the build ID
@@ -487,6 +589,11 @@ begin
 end;
 
 procedure TForm1.PageControl1Change (Sender: TObject);
+(*
+@AI:summary: Update the form UI for the specified tab.  Update the visibility of the menu item for the selected tab.  This is only a UI update, no data change here.
+@AI:params: Sender: The object that triggered the event, typically the page control itself.
+@AI:returns:
+*)
 var
   x: integer;
   ActivePageName, TableName, ShortName: string;
@@ -537,6 +644,12 @@ begin
 end;
 
 procedure TForm1.LoadDataIntoListBox (ListBox: TListBox; const TableName: string);
+(*
+@AI:summary: In each dynamicly created tab, there's a listbox that holds an ID for components (This is where Device_Components comes in).  This function first clears, then populates the listbox with the listbox.item[x].object[y] being represented to the SQLite tables PK field
+@AI:params: ListBox: The ListBox component where the data will be displayed.
+@AI:params: TableName: The name of the table from which data will be retrieved.
+@AI:returns:
+*)
 var
   Query: TSQLQuery;
   Line: string;
@@ -568,9 +681,280 @@ begin
   end;
 end;
 
-{$i func_CreateTab.inc}
+function SafeComponentName (Raw: string): string;
+(*
+@AI:summary: This function likely sanitizes or processes a raw string to ensure it is safe for use as a component name.
+@AI:params: Raw: The input string that needs to be sanitized or processed.
+@AI:returns: A sanitized string that is safe for use as a component name.
+*)
+var
+  Cleaned: string;
+  i: integer;
+begin
+  SetLength(Cleaned, Length(Raw));
+  for i := 1 to Length(Raw) do begin
+    if Raw[i] in ['A'..'Z', 'a'..'z', '0'..'9', '_'] then begin
+      Cleaned[i] := Raw[i];
+    end else begin
+      Cleaned[i] := '_';
+    end;
+  end;
+
+  Cleaned := Trim(Cleaned);
+  if Cleaned = '' then begin
+    Cleaned := 'X';
+  end;
+
+  if Cleaned[1] in ['0'..'9'] then begin
+    Cleaned := 'C_' + Cleaned;
+  end;
+
+  Result := Cleaned;
+end;
+
+procedure AddGlobalFieldsToFrame (Frame: TFrame1; ComponentName: string);
+(*
+@AI:summary: This function likely adds global fields to a specified frame component.
+@AI:params: Frame: The frame to which global fields will be added.
+@AI:params: ComponentName: The name of the component for which global fields are being added.
+@AI:returns:
+*)
+var
+  Q: TSQLQuery;
+  FieldName, FieldLabel, FieldType, ComboValues: string;
+  FieldY: integer;
+  LabelCtrl: TLabel;
+  EditCtrl: TEdit;
+  ComboCtrl: TComboBox;
+const
+  LineDisplacement = 2;
+begin
+  FieldY := LineDisplacement;
+  Q := NewQuery(S3DB);
+  try
+    Q.SQL.Text := 'SELECT FieldName, FieldLabel, ComponentType, ComboValues FROM LayoutMap WHERE Component = ''GLOBAL'' AND Origin = ''G'' ORDER BY SortOrder';
+    Q.Open;
+
+    while not Q.EOF do begin
+      FieldName := Q.FieldByName('FieldName').AsString;
+      FieldLabel := Q.FieldByName('FieldLabel').AsString;
+      FieldType := LowerCase(Q.FieldByName('ComponentType').AsString);
+      ComboValues := Q.FieldByName('ComboValues').AsString;
+
+      // Label
+      LabelCtrl := TLabel.Create(Frame.GlobalDetails);
+      LabelCtrl.Parent := Frame.GlobalDetails;
+      LabelCtrl.Caption := FieldLabel;
+      LabelCtrl.Left := 8;
+      LabelCtrl.Top := FieldY;
+      LabelCtrl.Name := SafeComponentName(ComponentName + '__' + FieldName + '__lbl');
+
+      // Control creation based on type
+      if lowercase(FieldType) = 'combo' then begin
+        ComboCtrl := TComboBox.Create(Frame.GlobalDetails);
+        ComboCtrl.Parent := Frame.GlobalDetails;
+        ComboCtrl.Left := 250;
+        ComboCtrl.Top := FieldY;
+        ComboCtrl.Width := 250;
+        ComboCtrl.Name := SafeComponentName(ComponentName + '__' + FieldName);
+        if ComboValues <> '' then begin
+          ComboCtrl.Items.Text := ComboValues;
+        end;
+
+        GlobalComponentList.AddObject(ComboCtrl.Name + '=' + ComponentName + '.' + FieldName, ComboCtrl);
+        Inc(FieldY, ComboCtrl.Height + LineDisplacement);
+      end else if lowercase(FieldType) = 'integer' then begin
+        ComboCtrl := TComboBox.Create(Frame.GlobalDetails);
+        ComboCtrl.Parent := Frame.GlobalDetails;
+        ComboCtrl.Left := 250;
+        ComboCtrl.Top := FieldY;
+        ComboCtrl.Width := 250;
+        ComboCtrl.Name := SafeComponentName(ComponentName + '__' + FieldName);
+
+        GlobalComponentList.AddObject(ComboCtrl.Name + '=' + ComponentName + '.' + FieldName, ComboCtrl);
+        Inc(FieldY, ComboCtrl.Height + LineDisplacement);
+      end else // Default to TEXT
+      begin
+        EditCtrl := TEdit.Create(Frame.GlobalDetails);
+        EditCtrl.Parent := Frame.GlobalDetails;
+        EditCtrl.Left := 250;
+        EditCtrl.Top := FieldY;
+        EditCtrl.Width := 250;
+        EditCtrl.Name := SafeComponentName(ComponentName + '__' + FieldName);
+
+        GlobalComponentList.AddObject(EditCtrl.Name + '=' + ComponentName + '.' + FieldName, EditCtrl);
+        Inc(FieldY, EditCtrl.Height + LineDisplacement);
+      end;
+
+      Q.Next;
+    end;
+
+  finally
+    EndQuery(Q);
+  end;
+end;
+
+procedure TForm1.CreateTab (ComponentName: string);
+(*
+@AI:summary: When called, this function will create the tab and sub components required to display the component list.  This does not deal with the design-time built Build List tab or menus.
+@AI:params: ComponentName: This is the type of component that this tab is responsible for displaying, such as motherboards, sound cards, etc.
+@AI:returns:
+*)
+var
+  Tab: TTabSheet;
+  LeftPanel: TGroupBox;
+  ItemList: TListBox;
+  Frame1: TFrame1;
+  Frame2: TFrame2;
+  Q: TSQLQuery;
+  GroupName, FieldName, FieldLabelText: string;
+  FieldLabel: TLabel;
+  LastGroupName: string;
+  FieldY: integer;
+  FrameCount: integer;
+  GlobalY: integer;
+  GlobalLabel: TLabel;
+  GlobalEdit: TEdit;
+  FieldType, ComboValues: string;
+  Combo: TComboBox;
+  Spin: tComboBox;
+  Edit: TEdit;
+begin
+  Tab := TTabSheet.Create(PageControl1);
+  Tab.PageControl := PageControl1;
+  Tab.Caption := ComponentName;
+
+  // --- LEFT PANEL: Record list ---
+  LeftPanel := TGroupBox.Create(Tab);
+  LeftPanel.Parent := Tab;
+  LeftPanel.Align := alLeft;
+  LeftPanel.Width := 200;
+  LeftPanel.Caption := 'Entries';
+  LeftPanel.Name := SafeComponentName('gb__' + ComponentName + '__List');
+
+  ItemList := TListBox.Create(LeftPanel);
+  ItemList.Parent := LeftPanel;
+  ItemList.Align := alClient;
+  ItemList.Name := SafeComponentName('lb__' + ComponentName + '__List');
+  ItemList.Sorted := True;
+  ItemList.OnClick := @ListBoxClick;
+
+  // Create Frame1 (holds Frame2s horizontally)
+  Frame1 := TFrame1.Create(Tab);
+  Frame1.Name := SafeComponentName('frm_' + ComponentName);
+  Frame1.Parent := Tab;
+  Frame1.Align := alClient;
+
+  // --- Populate GlobalDetails panel ---
+  GlobalY := 8;
+
+  AddGlobalFieldsToFrame(Frame1, ComponentName);
+
+  // Reset group tracking
+  LastGroupName := '';
+  Frame2 := nil;
+  FrameCount := 0;
+
+  Q := NewQuery(S3DB);
+  try
+    Q.SQL.Text := 'SELECT FieldName, FieldLabel, GroupName, ComponentType, ComboValues FROM LayoutMap WHERE Component = :c ORDER BY trim(GroupName) <> '''', upper(GroupName), SortOrder';
+    Q.ParamByName('c').AsString := ComponentName;
+    Q.Open;
+
+    LastGroupName := '';
+    Frame2 := nil;
+
+    while not Q.EOF do begin
+      GroupName := Q.FieldByName('GroupName').AsString;
+      if GroupName = '' then begin
+        GroupName := 'Generic';
+      end;
+      FieldName := Q.FieldByName('FieldName').AsString;
+
+      // Start a new Frame2 when group changes
+      if GroupName <> LastGroupName then begin
+        Frame2 := TFrame2.Create(Frame1.sbGroupScroll);
+        Frame2.Name := StringReplace(ComponentName + '_' + GroupName, ' ', '', [rfReplaceAll]);
+        Frame2.Parent := Frame1.sbGroupScroll;
+        Frame2.Align := alLeft;
+        Frame2.Width := 250;
+        Frame2.Left := Frame2.Width * FrameCount;
+        Frame2.CompGroupTitle.Caption := GroupName;
+        Inc(FrameCount);
+        Frame2.Tag := FrameCount;
+
+        LastGroupName := GroupName;
+        FieldY := 8;
+      end;
+
+      // Add Label
+      FieldLabel := TLabel.Create(Frame2);
+      FieldLabel.Name := StringReplace('label_' + ComponentName + '_' + GroupName + '_' + FieldName, ' ', '', [rfReplaceAll]);
+      FieldLabel.Parent := Frame2.CompDetails;
+      FieldLabel.Caption := FieldName;
+      FieldLabel.Left := 8;
+      FieldLabel.Top := FieldY;
+
+      FieldName := Q.FieldByName('FieldName').AsString;
+      FieldLabelText := Q.FieldByName('FieldLabel').AsString;
+      GroupName := Q.FieldByName('GroupName').AsString;
+      FieldType := Q.FieldByName('ComponentType').AsString;
+      ComboValues := Q.FieldByName('ComboValues').AsString;
+
+      // Component creation
+      if FieldType = 'Combo' then begin
+        Combo := TComboBox.Create(Frame2.CompDetails);
+        Combo.Parent := Frame2.CompDetails;
+        Combo.Left := 8;
+        Combo.Top := FieldY + FieldLabel.Height + 4;
+        Combo.Width := 200;
+        Combo.Name := SafeComponentName(ComponentName + '__' + FieldName);
+
+        // Add static combo values from LayoutMap
+        if ComboValues <> '' then begin
+          Combo.Items.Text := ComboValues;
+        end;
+        Inc(FieldY, FieldLabel.Height + Combo.Height + 12);
+
+        // Add to registry
+        GlobalComponentList.AddObject(Combo.Name + '=' + ComponentName + '.' + FieldName, Combo);
+      end else if FieldType = 'Integer' then begin
+        Spin := TComboBox.Create(Frame2.CompDetails);
+        Spin.Parent := Frame2.CompDetails;
+        Spin.Left := 8;
+        Spin.Top := FieldY + FieldLabel.Height + 4;
+        Spin.Width := 200;
+        Spin.Name := SafeComponentName(ComponentName + '__' + FieldName);
+        Inc(FieldY, FieldLabel.Height + Spin.Height + 12);
+
+        GlobalComponentList.AddObject(Spin.Name + '=' + ComponentName + '.' + FieldName, Spin);
+      end else begin
+        // Fallback to plain edit
+        Edit := TEdit.Create(Frame2.CompDetails);
+        Edit.Parent := Frame2.CompDetails;
+        Edit.Left := 8;
+        Edit.Top := FieldY + FieldLabel.Height + 4;
+        Edit.Width := 200;
+        Edit.Name := SafeComponentName(ComponentName + '__' + FieldName);
+        Inc(FieldY, FieldLabel.Height + Edit.Height + 12);
+
+        GlobalComponentList.AddObject(Edit.Name + '=' + ComponentName + '.' + FieldName, Edit);
+      end;
+
+      Q.Next;
+    end;
+
+  finally
+    EndQuery(Q);
+  end;
+end;
 
 procedure TForm1.ListBoxClick (Sender: TObject);
+(*
+@AI:summary: This is a linked function to all the dynamically created listboxes for each of the dynamically created tabs.  When an item is clicked, the PopulateSpecsPane function will populate the dynamically created fields (tEdit/tCombo) with the data read from the SQLite table.
+@AI:params: Sender: The object that triggered the click event, typically the ListBox itself.
+@AI:returns:
+*)
 var
   lb: TListBox;
   ParentGroup: TGroupBox;
@@ -599,6 +983,14 @@ begin
 end;
 
 procedure TForm1.PopulateSpecsPane (DeviceID: integer; const TabShortName: string);
+(*
+@AI:summary: This is an OVERLOADED function.  Based on the tab name (Spaces removed) populate the tEdit/tCombo fields placed on the form on this tab.
+@AI:params: DeviceID: The unique identifier for the device whose specifications are to be populated.
+@AI:params: TabShortName: The short name of the tab where the specifications will be displayed.
+@AI:returns:
+TODO: Get rid of the Exit/Continue garbage
+TODO: This will break due to the change from tEdits only over to tEdits and tCombos.  We'll need to work intelligence into this function.
+*)
 var
   Query: TSQLQuery;
   TabSheet: TTabSheet;
@@ -653,6 +1045,11 @@ begin
 end;
 
 procedure TForm1.PopulateSpecsPane (DeviceID: integer);
+(*
+@AI:summary: Each dynamic tab gets a whole list of tEdits and tCombos to allow for user data updates.  This function goes through and creates the tEdits (Only, currently) and places them on the scroll with a specific name.  This I beleive is being retired as tFrame1 and tFrame2 is handling that functionality.  Will have to trace through code.
+@AI:returns:
+TODO: Remove the Exit/Continue garbage.  This function is likely to be rewritten anyways with the introduction of tCombos and not just tEdits littering the place.
+*)
 var
   Query: TSQLQuery;
   FieldName, FieldValue: string;
@@ -751,6 +1148,13 @@ begin
 end;
 
 procedure TForm1.PopulateComponentList (ComponentName: string; TargetListBox: TListBox);
+(*
+@AI:summary: In each dynamic tab, this function is supposed to populate the ListBox that shows just the QRCode and name of the item.  Problem is that a proper ID is not stored with the component.
+@AI:params: ComponentName: The name of the component to filter and display in the list box.
+@AI:params: TargetListBox: The list box where the components will be populated.
+@AI:returns:
+TODO: This function is incomplete as it doesn't have a pointer back to a PK for the table.
+*)
 var
   qr: TSQLQuery;
   SQL: string;
@@ -759,7 +1163,7 @@ begin
 
   SQL := 'SELECT QRCode, Name FROM ' + ComponentName + ' ORDER BY Name ASC';
 
-  qr := NewQuery(DBConnection);
+  qr := NewQuery(S3DB);
   try
     qr.SQL.Text := SQL;
     qr.Open;
@@ -774,6 +1178,11 @@ begin
 end;
 
 procedure TForm1.RefreshBuildList;
+(*
+@AI:summary: Refreshes the list of builds displayed in the form.
+@AI:params:
+@AI:returns:
+*)
 var
   Query: TSQLQuery;
   Line: string;
@@ -801,10 +1210,16 @@ begin
 end;
 
 procedure TForm1.RenderComponentGroups;
+(*
+@AI:summary: Renders groups of components within a form.
+@AI:params: None.
+@AI:returns: None.
+TODO: I think this has been refactored out of the tool since it's dealing with group boxes not frames like we're shifting to. Need to trace this code.
+*)
 var
   x: integer;
   pnl: tGroupBox;
-  mi: TMenuItem;
+  mi: TMenuItem;// mi = MenuItem
 begin
   for x := 0 to MainMenu1.Items.Count - 1 do begin
     mi := TMenuItem(MainMenu1.Items[x]);
@@ -822,6 +1237,11 @@ begin
 end;
 
 function TForm1.SanitizeComponentName (const S: string): string;
+(*
+@AI:summary: This function removes all bad lettering from a functions name to conform to Pascal naming standards.
+@AI:params: S: The original component name that needs to be sanitized.
+@AI:returns: A sanitized version of the component name as a string.
+*)
 var
   i: integer;
 begin
@@ -836,6 +1256,13 @@ begin
 end;
 
 procedure TForm1.AddSubMenu (ParentMenu: TMenuItem; const SubCaption: string; TagValue: integer);
+(*
+@AI:summary: This function adds a submenu item to a specified parent menu.
+@AI:params: ParentMenu: The menu item to which the submenu will be added.
+@AI:params: SubCaption: The text label for the submenu item.
+@AI:params: TagValue: An integer value that may be used to identify or categorize the submenu item.
+@AI:returns: No output is expected as this is a procedure.
+*)
 var
   SubMenu: TMenuItem;
 begin
@@ -849,6 +1276,11 @@ end;
 
 // Handle submenu clicks
 procedure TForm1.MenuItemClick (Sender: TObject);
+(*
+@AI:summary: For the dyanmically created menus (Based on the tabs created at run time) the sub-menus created for add/edit/delete are actioned in this function.
+@AI:params: Sender: The object that triggered the menu item click event, typically used to identify the source of the action.
+@AI:returns: No output is expected as this is a procedure.
+*)
 var
   MenuAction, ParentCaption, ShortName, TableName: string;
   MenuItem, ParentItem: TMenuItem;
@@ -883,8 +1315,12 @@ begin
 end;
 
 procedure TForm1.GenerateMenuSystem;
+(*
+@AI:summary: This function goes through structure.ini in the Order section and creates the menus to represent actions for each tab, then creates the required Add/Edit/Delete sub menus.
+@AI:params: None.
+@AI:returns: None.
+*)
 var
-
   ini: TIniFile;
   Order: TStringList;
   x: integer;
@@ -914,6 +1350,11 @@ begin
 end;
 
 procedure TForm1.MenuParentClick (Sender: TObject);
+(*
+@AI:summary: This function likely handles click events for a parent menu item in a form.
+@AI:params: Sender: The object that triggered the click event, typically the menu item itself.
+@AI:returns:
+*)
 var
   MenuItem: TMenuItem;
   TabSheet: TTabSheet;
@@ -953,6 +1394,11 @@ begin
 end;
 
 procedure TForm1.CleanupDynamicMenus;
+(*
+@AI:summary: Just as there's a function to create the dynamic menus, this function destroys those created menus at application shutdown.
+@AI:params:
+@AI:returns:
+*)
 var
   i, j: integer;
   MenuItem, SubMenuItem: TMenuItem;
@@ -978,6 +1424,11 @@ begin
 end;
 
 procedure TForm1.LoadBuildDetails;
+(*
+@AI:summary: This function currently only loads notes from the database when a new Build row is selected in the Build tab.
+@AI:params: None
+@AI:returns: None
+*)
 var
   q: TSQLQuery;
   BuildID: integer;
@@ -998,6 +1449,11 @@ begin
 end;
 
 procedure TForm1.AddMenuClick (Sender: TObject);
+(*
+@AI:summary: When a dynamic tab is selected, the "Add Component" sub menu is triggered here.  This function will effectively add a new row to the relevant table, then add a reference to that row into the Listbox.
+@AI:params: Sender: Represents the object that triggered the event, typically the menu item itself.
+@AI:returns:
+*)
 var
   ActiveTab: TTabSheet;
   TabCaption, TabShortName, TableName, InsertSQL: string;
@@ -1041,6 +1497,11 @@ begin
 end;
 
 function TForm1.DeleteBuildComponent (ShortName: string): boolean;
+(*
+@AI:summary: With users permission on a selected component in the currently selected tab, remove the item from the appropriate table in the SQLite3 table.
+@AI:params: ShortName: The identifier for the build component to be deleted.
+@AI:returns: A boolean indicating whether the deletion was successful or not.
+*)
 var
   TableName, DeleteSQL: string;
   TabSheet: TTabSheet;
@@ -1085,6 +1546,11 @@ begin
 end;
 
 function TForm1.AddBuildComponent (ShortName: string): boolean;
+(*
+@AI:summary: This function will add a new row to the appropriate Device_ShortName table in SQLite, defaulting to a QRCode and Title.
+@AI:params: ShortName: The identifier for the build component to be added.
+@AI:returns: A boolean indicating whether the addition of the build component was successful.
+*)
 var
   TableName, TabCaption, QRString, Title, InsertSQL: string;
   Query: TSQLQuery;
@@ -1137,6 +1603,12 @@ begin
 end;
 
 initialization
+(*
+@AI:initialization-summary: Initializes a global component list.
+@AI:initialization-actions:
+- Creates a new TStringList instance and assigns it to GlobalComponentList.
+@AI:GlobalVars:GlobalComponentList:This variable is the global list of all dynamically created tEdit/tCombo components.  It contains the name of the component, plus an object pointer to the component itself.
+*)
   GlobalComponentList := TStringList.Create;
 
 finalization

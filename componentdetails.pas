@@ -1,3 +1,6 @@
+(*
+@AI:unit-summary: This Pascal unit defines a graphical user interface component, specifically a frame (TFrame2) that contains a panel for a group title and a scrollable box for displaying component details. Its primary responsibility is to manage the layout and presentation of these UI elements within an application.
+*)
 unit ComponentDetails;
 
 {$mode ObjFPC}{$H+}

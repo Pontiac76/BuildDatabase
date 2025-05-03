@@ -1,3 +1,6 @@
+(*
+@AI:unit-summary: This Pascal unit is responsible for loading a layout map from a configuration file (`Structure.ini`) and populating a SQLite database table (`LayoutMap`) with component and field information, including their types and labels, which is essential for the application's user interface setup.
+*)
 unit UIManager;
 
 {$mode ObjFPC}{$H+}
@@ -14,6 +17,16 @@ implementation
 uses DatabaseManager;
 
 procedure LoadLayoutMap;
+(*
+@AI:summary:
+- This unit looks at the structure.ini file and generates the required data to map out how the components and labels on each tab should be shown.
+- This enables easier sorting, grouping and call backs.
+- This function handles entering both the Global and individual sections that are defined in the Order section of the ini file.
+- This function needs to be run only once at every application startup.
+- This is a very important boot-strap function.
+@AI:params: None.
+@AI:returns: None.
+*)
 var
   Ini: TIniFile;
   ComponentList, FieldList, GlobalFields: TStringList;
@@ -148,6 +161,11 @@ begin
 end;
 
 initialization
-  LoadLayoutMap;
+(*
+@AI:initialization-summary: Creates the layout map during initialization.
+@AI:initialization-actions:
+- Calls LoadLayoutMap to execute its functionality.
+*)
+LoadLayoutMap;
 
 end.
