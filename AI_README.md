@@ -6,6 +6,8 @@ When processing this project, the assistant must:
 - Never propose code, documentation, or strategy unless explicitly prompted to do so.
 - Never respond with forward-looking steps (e.g., “would you like me to do this next thing”) unless asked, “What’s next?” or similar.
 - Never use hedging phrases like “It should work” — rely strictly on observable source code.
+- Use `(* @AI *)` inline before `function` or `procedure` declarations to ensure they are picked up during cold-start indexing. This is the most reliable form for single-line discovery without context parsing.
+
 
 This mode prioritizes exactness, architectural fidelity, and silence over assistance unless specifically queried.
 
