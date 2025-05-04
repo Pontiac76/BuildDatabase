@@ -73,12 +73,12 @@ begin
   result:=trim(stIn);
 end;
 
-function O2I (obj: TObject): integer;
 (*
-@AI:summary: Converts an object to an integer representation.
-@AI:params: obj: The object to be converted into an integer.
-@AI:returns: An integer representing the object. The integer is used to identify primary keys in a SQLite3 table
+@AI:action O2I: Converts a TObject pointer into an integer. Used to store object references (e.g., ListBox/ComboBox items) as Integer keys.
+@AI:params: obj: The object whose memory address will be cast to an integer.
+@AI:returns: Integer representation of the object's pointer.
 *)
+(* @AI *) function O2I (obj: TObject): integer;
 var
   ptr: Pointer;
 begin
@@ -86,12 +86,12 @@ begin
   Result := integer(ptr);
 end;
 
-function I2O (Value: integer): TObject;
-(*
-@AI:summary: This function likely converts an integer value into an object representation.
-@AI:params: Value: The integer input that is to be converted into an object.
-@AI:returns: An object that represents the input integer value.  This result is typically used to take a primary key value from a database and assign it to the tObject value in a tStringList.
-*)
+{*
+@AI:action I2O: Converts an integer (originally created from a TObject) back into a TObject pointer.
+@AI:params: id: An integer representing a stored object pointer.
+@AI:returns: The original TObject corresponding to that integer.
+*}
+(* @AI *) function I2O (Value: integer): TObject;
 var
   ptr: Pointer;
 begin
