@@ -482,8 +482,8 @@ procedure DefineBuildComponents;
 begin
   slTableList.Text := fTableList;
   if slTableList.IndexOf('BuildComponents') = -1 then begin
-    dbExec('CREATE TABLE [BuildComponents]([BuildID] INTEGER,[ComponentID] INTEGER,UNIQUE([ComponentID] ASC) ON CONFLICT FAIL);');
-    dbExec('CREATE UNIQUE INDEX [idxBuildComponents] ON [BuildComponents]([BuildID],[ComponentID]);');
+    dbExec('CREATE TABLE [BuildComponents]([BuildID] INTEGER,[Component] TEXT NOT NULL,[ComponentID] INTEGER);');
+    dbExec('CREATE UNIQUE INDEX [idxBuildComponents] ON [BuildComponents](BuildID, Component, ComponentID);');
   end;
 end;
 

@@ -1,11 +1,11 @@
 object Form1: TForm1
-  Left = 1221
-  Height = 668
-  Top = 93
-  Width = 1278
+  Left = 633
+  Height = 1028
+  Top = 0
+  Width = 1918
   Caption = 'Form1'
-  ClientHeight = 668
-  ClientWidth = 1278
+  ClientHeight = 1028
+  ClientWidth = 1918
   Menu = MainMenu1
   OnCreate = FormCreate
   OnDestroy = FormDestroy
@@ -13,9 +13,9 @@ object Form1: TForm1
   LCLVersion = '3.4.0.0'
   object PageControl1: TPageControl
     Left = 0
-    Height = 668
+    Height = 1028
     Top = 0
-    Width = 1278
+    Width = 1918
     ActivePage = tsBuildSheet
     Align = alClient
     TabIndex = 0
@@ -23,21 +23,21 @@ object Form1: TForm1
     OnChange = PageControl1Change
     object tsBuildSheet: TTabSheet
       Caption = 'Build List'
-      ClientHeight = 640
-      ClientWidth = 1270
+      ClientHeight = 1000
+      ClientWidth = 1910
       object gbCompList1: TGroupBox
         Left = 0
-        Height = 640
+        Height = 1000
         Top = 0
         Width = 230
         Align = alLeft
         Caption = 'Build List'
-        ClientHeight = 620
+        ClientHeight = 980
         ClientWidth = 226
         TabOrder = 0
         object lbBuildList: TListBox
           Left = 0
-          Height = 620
+          Height = 980
           Top = 0
           Width = 226
           Align = alClient
@@ -50,24 +50,24 @@ object Form1: TForm1
         end
       end
       object Panel1: TPanel
-        Left = 230
-        Height = 640
+        Left = 235
+        Height = 1000
         Top = 0
-        Width = 1040
+        Width = 1675
         Align = alClient
         Caption = 'Panel1'
-        ClientHeight = 640
-        ClientWidth = 1040
+        ClientHeight = 1000
+        ClientWidth = 1675
         TabOrder = 1
         object Panel2: TPanel
           Left = 1
           Height = 209
-          Top = 430
-          Width = 1038
+          Top = 790
+          Width = 1673
           Align = alBottom
           Caption = 'To Be: Image Viewing Area'
           ClientHeight = 209
-          ClientWidth = 1038
+          ClientWidth = 1673
           ParentBackground = False
           ParentColor = False
           TabOrder = 0
@@ -75,7 +75,7 @@ object Form1: TForm1
             Left = 1
             Height = 207
             Top = 1
-            Width = 1036
+            Width = 1671
             HorzScrollBar.Page = 1
             HorzScrollBar.Tracking = True
             VertScrollBar.Page = 1
@@ -87,12 +87,12 @@ object Form1: TForm1
         end
         object gbCompStats1: TGroupBox
           Left = 1
-          Height = 429
+          Height = 789
           Top = 1
           Width = 310
           Align = alLeft
           Caption = 'System Build Specs'
-          ClientHeight = 409
+          ClientHeight = 769
           ClientWidth = 306
           ParentBackground = False
           ParentColor = False
@@ -100,7 +100,7 @@ object Form1: TForm1
           TabOrder = 1
           object sbSystemBuildSpecs: TScrollBox
             Left = 0
-            Height = 409
+            Height = 769
             Top = 0
             Width = 306
             HorzScrollBar.Page = 1
@@ -115,22 +115,22 @@ object Form1: TForm1
         end
         object PageControl2: TPageControl
           Left = 316
-          Height = 429
+          Height = 789
           Top = 1
-          Width = 723
+          Width = 1358
           ActivePage = TabSheet1
           Align = alClient
           TabIndex = 0
           TabOrder = 2
           object TabSheet1: TTabSheet
             Caption = 'Build Notes'
-            ClientHeight = 401
-            ClientWidth = 715
+            ClientHeight = 761
+            ClientWidth = 1350
             object Memo1: TMemo
               Left = 0
-              Height = 381
+              Height = 741
               Top = 20
-              Width = 715
+              Width = 1350
               Align = alClient
               ParentColor = True
               TabOrder = 0
@@ -140,7 +140,7 @@ object Form1: TForm1
               Left = 0
               Height = 20
               Top = 0
-              Width = 715
+              Width = 1350
               Align = alTop
               Caption = 'Notes about Build'
               TabOrder = 1
@@ -152,10 +152,16 @@ object Form1: TForm1
         end
         object Splitter1: TSplitter
           Left = 311
-          Height = 429
+          Height = 789
           Top = 1
           Width = 5
         end
+      end
+      object Splitter2: TSplitter
+        Left = 230
+        Height = 1000
+        Top = 0
+        Width = 5
       end
     end
   end

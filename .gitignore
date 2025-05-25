@@ -66,4 +66,5 @@ desktop.ini
 # *.lps
 sql_debug.txt
 .vscode/settings.json
+.vscode
 *.old

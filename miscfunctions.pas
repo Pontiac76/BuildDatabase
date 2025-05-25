@@ -16,6 +16,7 @@ function O2I (obj: TObject): integer;
 function I2O (Value: integer): TObject;
 function ListObject(lb:TListBox):integer;
 procedure SizeForm(frm, relativeTo: TForm; Scale: Byte);
+function SafeComponentName (Raw: string): string;
 
 implementation
 
@@ -51,6 +52,35 @@ begin
   frm.Top := TargetMonitor.Top + ((TargetMonitor.Height - frm.Height) div 2);
 end;
 
+function SafeComponentName (Raw: string): string;
+(*
+@AI:summary: This function likely sanitizes or processes a raw string to ensure it is safe for use as a component name.
+@AI:params: Raw: The input string that needs to be sanitized or processed.
+@AI:returns: A sanitized string that is safe for use as a component name.
+*)
+var
+  Cleaned: string;
+  i: integer;
+begin
+  Cleaned := '';
+  for i := 1 to Length(Raw) do begin
+    if Raw[i] in ['A'..'Z', 'a'..'z', '0'..'9', '_'] then begin
+      Cleaned := Cleaned + Raw[i];
+    end;
+  end;
+
+  Cleaned := Trim(Cleaned);
+  if Cleaned = '' then begin
+    Cleaned := 'X';
+  end;
+
+  if Cleaned[1] in ['0'..'9'] then begin
+    Cleaned := 'C_' + Cleaned;
+  end;
+
+  Result := Cleaned;
+end;
+
 function NoSpaces(stIn:string):string;
 (*
 @AI:summary: This function removes all spaces from the input string.
@@ -78,7 +108,7 @@ end;
 @AI:params: obj: The object whose memory address will be cast to an integer.
 @AI:returns: Integer representation of the object's pointer.
 *)
-(* @AI *) function O2I (obj: TObject): integer;
+function O2I (obj: TObject): integer;
 var
   ptr: Pointer;
 begin
@@ -91,7 +121,7 @@ end;
 @AI:params: id: An integer representing a stored object pointer.
 @AI:returns: The original TObject corresponding to that integer.
 *}
-(* @AI *) function I2O (Value: integer): TObject;
+function I2O (Value: integer): TObject;
 var
   ptr: Pointer;
 begin

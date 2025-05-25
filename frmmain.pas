@@ -12,7 +12,7 @@ interface
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, Menus, ComCtrls, StdCtrls,
   ExtCtrls, LCLType, Buttons,
-  RegExpr, SQLite3Conn, SQLite3, SQLDB;
+  RegExpr, SQLite3Conn, SQLite3, SQLDB, TabGrouping;
 
 type
   TQRType = (QRCode, QRURL, QRPhoneNumber);
@@ -58,6 +58,7 @@ type
     mnuBuildList: TMenuItem;
     PageControl1: TPageControl;
     Splitter1: TSplitter;
+    Splitter2:TSplitter;
     TabSheet1: TTabSheet;
     TabSheet2: TTabSheet;
     tsBuildSheet: TTabSheet;
@@ -76,6 +77,11 @@ type
     procedure MenuParentClick (Sender: TObject);
     procedure ListBoxClick (Sender: TObject);
     procedure AddMenuClick (Sender: TObject);
+    procedure ComponentExit (Sender: TObject);
+    procedure cboPopulateNumeric (Sender: TObject);// Get unique sorted integers from the table
+    procedure cboPopulateCombo (Sender: TObject);  // Get default and unique text from the table
+    procedure cboItemSelected (Sender: TObject);   // Triggered when an item is selected in the dropdown
+    procedure AssignBuildButtonClick(Sender: TObject);
   private
     procedure CreateTab (ComponentName: string);
 
@@ -98,8 +104,11 @@ type
     function HandleBuildComponentAction (Mode, ShortName: string; OptionalDeviceID: integer = -1): boolean;
     function AddBuildComponent (ShortName: string): boolean;
     function DeleteBuildComponent (ShortName: string): boolean;
-  public
-
+    procedure AddGlobalFieldsToFrame (Frame: TFrame1; ComponentName: string);
+    procedure CreateBuildAssignmentPanel(Frame: TFrame1; TabShortName: string);
+    procedure UpdateBuildAssignmentStatus(const TabShortName: string);  public
+    function GetBuildIdForComponent(ComponentID: integer; Component: string): integer;
+    function GetBuildNameForID(ID:integer):string;
   end;
 
 var
@@ -108,7 +117,7 @@ var
 
 implementation
 
-uses IniFiles, SimpleSQLite3, DatabaseManager, MiscFunctions, TabGrouping, ComponentDetails;
+uses IniFiles, SimpleSQLite3, DatabaseManager, MiscFunctions, ComponentDetails, Math;
 
   {$R *.lfm}
 
@@ -120,6 +129,32 @@ var
 const
   EditHeight = 25;
 
+
+  //function FindAnyComponent (Root: TComponent; const Name: string): TComponent;
+  //(*
+  //@AI:summary: This function likely searches for a component by its name within a specified root component.
+  //@AI:params: Root: The root component from which the search for the named component begins.
+  //@AI:params: Name: The name of the component to be searched for within the root component.
+  //@AI:returns: The function is expected to return the found component or nil if not found.
+  //*)
+  //var
+  //  i: integer;
+  //  Found: TComponent;
+  //begin
+  //  if Root.Name = Name then begin
+  //    Exit(Root);
+  //  end;
+  //
+  //  for i := 0 to Root.ComponentCount - 1 do begin
+  //    Found := FindAnyComponent(Root.Components[i], Name);
+  //    if Assigned(Found) then begin
+  //      Exit(Found);
+  //    end;
+  //  end;
+  //
+  //  Result := nil;
+  //end;
+  //
 
 function FindAnyComponent (Root: TComponent; const Name: string): TComponent;
 (*
@@ -133,13 +168,25 @@ var
   Found: TComponent;
 begin
   if Root.Name = Name then begin
-    Exit(Root);
+    Result := Root;
+    Exit;
   end;
 
+  // Search recursively through subcomponents
   for i := 0 to Root.ComponentCount - 1 do begin
     Found := FindAnyComponent(Root.Components[i], Name);
     if Assigned(Found) then begin
-      Exit(Found);
+      Result := Found;
+      Exit;
+    end;
+  end;
+
+  // Final fallback: use Root.FindComponent (only if supported)
+  if Assigned(Root) then begin
+    Found := Root.FindComponent(Name);
+    if Assigned(Found) then begin
+      Result := Found;
+      Exit;
     end;
   end;
 
@@ -174,38 +221,229 @@ procedure DeleteChildObjects (Sender: TComponent);
 @AI:summary: Given the Sender as the root control, this function will delete all tWinControls that are built and have their ownership set to the Sender control at runtime.
 @AI:params: Sender: The component whose child objects are to be deleted.
 @AI:returns: No output is expected.
-TODO: Rewrite this to get the whole "Exit" stuff out of this code.  Horrible code style!
 *)
 var
   i, CountBefore: integer;
-  ControlList: array of TControl;
+  ControlList: tList;
 begin
   // Code generated in this function by AI due to author being an I-D-Ten-T.
-  if not (Sender is TWinControl) then begin
-    Exit;
+  if (Sender is TWinControl) then begin
+    CountBefore := TWinControl(Sender).ControlCount;
+    if CountBefore <> 0 then begin
+      ControlList:=TList.Create;
+      for i := 0 to CountBefore - 1 do begin
+        ControlList.Add(TWinControl(Sender).Controls[i]);
+      end;
+
+      // Now delete from stored list
+      for i := ControlList.Count-1 downto 0 do begin
+        if (tWinControl(ControlList[i]) is TGroupBox) or (tWinControl(ControlList[i]) is tPanel) then begin
+          DeleteChildObjects(TWinControl(ControlList[i]));
+        end; // Recursively delete child controls
+        tWinControl(ControlList[i]).Free;
+      end;
+      ControlList.Free;
+    end;
   end;
+end;
 
-  CountBefore := TWinControl(Sender).ControlCount;
+procedure TForm1.ComponentExit (Sender: TObject);
+(*
+@AI:summary: Securely updates a single database field when a form control loses focus, using parameterized SQL.
+@AI:params: Sender: The TEdit or TComboBox control that triggered the OnExit event.
+@AI:behavior:
+  - Uses GlobalComponentList to determine the table and field.
+  - Retrieves the currently selected DeviceID from the associated listbox.
+  - Executes a parameterized UPDATE using NewQuery/EndQuery.
+@AI:requires:
+  - Component must be registered in GlobalComponentList.
+  - Listbox must be present and contain a selected item with I2O mapping.
+*)
+var
+  CompName, FieldName, FullKey, Value: string;
+  DotPos: integer;
+  ShortName, ListBoxName: string;
+  ListBox: TListBox;
+  DeviceID, Index: integer;
+  Q: TSQLQuery;
+  SQL: string;
+begin
+  if (Sender is TEdit) or (Sender is TComboBox) then begin
+    CompName := TWinControl(Sender).Name;
+    FullKey := GlobalComponentList.Values[CompName];
 
-  if CountBefore = 0 then begin
-    Exit;
+    DotPos := Pos('.', FullKey);
+    if DotPos > 0 then begin
+      FieldName := Copy(FullKey, DotPos + 1, Length(FullKey));
+
+      if Sender is TEdit then begin
+        Value := TEdit(Sender).Text;
+      end else begin
+        Value := TComboBox(Sender).Text;
+      end;
+
+      ShortName := Copy(CompName, 1, Pos('__', CompName) - 1);
+      ListBoxName := 'lb__' + ShortName + '__List';
+
+      ListBox := TListBox(FindAnyComponent(Form1, ListBoxName));
+      if Assigned(ListBox) then begin
+        Index := ListBox.ItemIndex;
+        if Index <> -1 then begin
+          DeviceID := O2I(ListBox.Items.Objects[Index]);
+
+          Q := NewQuery(S3DB);
+          try
+            SQL := 'UPDATE Device_' + ShortName + ' SET ' + FieldName + ' = :val WHERE DeviceID = :id';
+            Q.SQL.Text := SQL;
+            Q.ParamByName('val').AsString := Value;
+            Q.ParamByName('id').AsInteger := DeviceID;
+            Q.ExecSQL;
+          finally
+            EndQuery(Q);
+          end;
+        end;
+      end;
+    end;
   end;
+end;
 
-  SetLength(ControlList, CountBefore);
-  for i := 0 to CountBefore - 1 do begin
-    ControlList[i] := TWinControl(Sender).Controls[i];
+(*
+@AI:summary: This function will populate the combobox dropdown when selected.  It reads the database for all distinct, numeric values that have been entered for the specific field, sorts by integer.
+@AI:params: Sender: The object that triggered the event, typically the object item itself.
+@AI:returns:
+@AI:notes: This function is called by the "OnDropDown" event and is assigned within the CreateTab function.
+*)
+procedure TForm1.cboPopulateNumeric (Sender: TObject);
+var
+  q: TSQLQuery;
+  cbo: TComboBox;
+  CompName: string;
+  FieldName: string;
+  lb: TListBox;
+  TabShortName: string;
+  sql: string;
+  v: string;
+begin
+  CompName := PageControl1.ActivePage.Caption;
+  TabShortName := StringReplace(CompName, ' ', '', [rfReplaceAll]);
+  // Determine if there is an item selected in the current tabs item listbox
+  lb := nil;
+  lb := TListBox(FindAnyComponent(form1, 'lb__' + TabShortName + '__List'));
+  if Assigned(lb) and (lb.ItemIndex <> -1) then begin
+    // Now retrieve all the unique values for all entries, sorted by integer based values.
+    cbo := TComboBox(Sender);
+    cbo.Items.Clear;
+    FieldName := copy(cbo.Name, Pos('__', cbo.Name) + 2, length(cbo.Name));
+    sql := 'select distinct ' + FieldName + ' from Device_' + TabShortName + ' order by cast(' + FieldName + ' as integer)';
+    q := NewQuery(s3db);
+    q.SQL.Text := sql;
+    q.Open;
+    while not q.EOF do begin
+      v := trim(q.FieldByName(FieldName).AsString);
+      if length(v) > 0 then begin
+        cbo.Items.Add(q.FieldByName(FieldName).AsString);
+      end;
+      q.Next;
+    end;
+    EndQuery(q);
+
   end;
+end;
 
-  // Now delete from stored list
-  for i := High(ControlList) downto Low(ControlList) do begin
-    if ControlList[i] is TGroupBox then begin
-      DeleteChildObjects(ControlList[i]);
-    end; // Recursively delete child controls
-    ControlList[i].Free;
+(*
+@AI:summary: This function will populate the combobox dropdown when selected.  It first reads what specific values are needed for this dropdown, then selects the other definitions found in the database for this field.  Sorted based on what the fields are specifically defined as in structure.ini.
+@AI:params: Sender: The object that triggered the event, typically the object item itself.
+@AI:returns:
+@AI:notes: This function is called by the "OnDropDown" event and is assigned within the CreateTab function.
+*)
+procedure TForm1.cboPopulateCombo (Sender: TObject);
+var
+  q: TSQLQuery;
+  cbo: TComboBox;
+  sl: TStringList;
+  CompName: string;
+  FieldName: string;
+  DbField: string;
+  lb: TListBox;
+  TabShortName: string;
+begin
+  CompName := PageControl1.ActivePage.Caption;
+  TabShortName := StringReplace(CompName, ' ', '', [rfReplaceAll]);
+  // Determine if there is an item selected in the current tabs item listbox
+  lb := TListBox(FindAnyComponent(form1, 'lb__' + TabShortName + '__List'));
+  if Assigned(lb) and (lb.ItemIndex <> -1) then begin
+    cbo := TComboBox(Sender);
+    cbo.Items.Clear;
+    FieldName := copy(cbo.Name, Pos('__', cbo.Name) + 2, maxlongint);
+    // Pick off the existing defined values
+    q := NewQuery(S3DB);
+    q.SQL.Text := 'select ComboValues from LayoutMap where (Component=''GLOBAL'' or Component=:c) and FieldName=:f and ComponentType=''Combo'' order by Component<>''GLOBAL'' limit 1';
+    q.ParamByName('c').Text := CompName;
+    q.ParamByName('f').Text := FieldName;
+    q.Open;
+    if not q.EOF then begin
+      cbo.Items.Text := q.FieldByName('ComboValues').AsString;
+    end;
+    EndQuery(q);
+
+    // Now locate anything set that isn't part of the defaults
+    q := NewQuery(s3db);
+    q.sql.Text := 'select distinct ' + FieldName + ' from Device_' + TabShortName + ' order by lower(' + FieldName + ')';
+    q.Open;
+    sl := TStringList.Create;
+    while not q.EOF do begin
+      // Get the current contents of whats in the dropdown
+      sl.Text := cbo.Items.Text;
+      sl.Text := trim(LowerCase(sl.Text));
+
+      // See if there's an item found
+      if (trim(q.FieldByName(FieldName).AsString) <> '') and (sl.IndexOf(q.FieldByName(FieldName).AsString.ToLower) = -1) then begin
+        cbo.Items.Add(q.FieldByName(FieldName).AsString);
+      end;
+
+      q.Next;
+    end;
+    sl.Free;
+    EndQuery(q);
   end;
+end;
 
-  SetLength(ControlList, 0);
-
+procedure TForm1.cboItemSelected (Sender: TObject);
+(*
+@AI:summary: This function will trigger when any dynamically created combo box has an item selected from its own dropdown box.  This immediately updates the database table.
+@AI:params: Sender: The object that triggered the event, typically the object item itself.
+@AI:returns:
+*)
+var
+  cbo: TComboBox;
+  sl: TStringList;
+  CompName: string;
+  FieldName: string;
+  DbField: string;
+  CompID: integer;
+  Q: TSQLQuery;
+  lb: TListBox;
+  TabShortName: string;
+  sql: string;
+begin
+  CompName := PageControl1.ActivePage.Caption;
+  TabShortName := StringReplace(CompName, ' ', '', [rfReplaceAll]);
+  // Determine if there is an item selected in the current tabs item listbox
+  lb := TListBox(FindAnyComponent(form1, 'lb__' + TabShortName + '__List'));
+  if Assigned(lb) and (lb.ItemIndex <> -1) then begin
+    // Get the text, toss it to the DB
+    cbo := TComboBox(Sender);
+    q := NewQuery(S3DB);
+    CompID := o2i(lb.Items.Objects[lb.ItemIndex]);
+    DbField := tCombobox(Sender).Name;
+    DBField := copy(dbField, pos('__', DBField) + 2, length(dbfield));
+    sql := 'update Device_' + TabShortName + ' set ' + DBField + '=:v where DeviceID=:d';
+    q.SQL.Text := sql;
+    q.ParamByName('v').AsString := cbo.Items[cbo.ItemIndex];
+    q.ParamByName('d').AsInteger := CompID;
+    q.ExecSQL;
+    EndQuery(q);
+  end;
 end;
 
 procedure TForm1.MenuItem8Click (Sender: TObject);
@@ -213,7 +451,8 @@ procedure TForm1.MenuItem8Click (Sender: TObject);
 @AI:summary: This badly named function is for the menu item to refresh the build list ListBox on the form UI.  This function will re-highlight the last selected build item on reload if the item still exists in the [BuildList] SQLite table
 @AI:params: Sender: The object that triggered the event, typically the menu item itself.
 @AI:returns:
-*)      var
+*)
+var
   CurrentItem: TObject;
 begin
   CurrentItem := nil;
@@ -588,6 +827,169 @@ begin
   // Duplicates are ignored
 end;
 
+function TForm1.GetBuildIdForComponent(ComponentID: integer; Component: string): integer;
+(*
+@AI:summary: Retrieves the BuildID that a specific component is assigned to, based on component type and ID.
+@AI:params: ComponentID: The numeric ID of the component in its device table.
+@AI:params: Component: The short name of the component type (e.g., 'Motherboards').
+@AI:returns: The BuildID the component is assigned to, or -1 if unassigned.
+*)
+var
+  q: TSQLQuery;
+  sql: string;
+  res: integer;
+begin
+  q := NewQuery(s3db);
+  sql := 'SELECT BuildID FROM BuildComponents WHERE Component = :comp AND ComponentID = :cid';
+  q.SQL.Text := sql;
+  q.ParamByName('comp').AsString := Component;
+  q.ParamByName('cid').AsInteger := ComponentID;
+  q.Open;
+  res := -1;
+  if not q.EOF then
+    res := q.FieldByName('BuildID').AsInteger;
+  EndQuery(q);
+  Result := res;
+end;
+
+procedure TForm1.AssignBuildButtonClick(Sender: TObject);
+(*
+@AI:summary: Toggles a component's assignment to the selected build. Inserts, removes, or moves the component depending on its current association.
+@AI:params: Sender: The button clicked to initiate the toggle.
+@AI:returns: None.
+*)
+var
+  TabShortName, Prefix, BuildName, SQL: string;
+  ListBox: TListBox;
+  Button: TButton;
+  ComponentID, BuildID, AssignedBuildID: Integer;
+  q:TSQLQuery;
+begin
+  if lbBuildList.ItemIndex = -1 then Exit;
+
+  TabShortName := SafeComponentName(PageControl1.ActivePage.Caption);
+  Prefix := TabShortName + '__BuildAssign__';
+
+  ListBox := TListBox(FindAnyComponent(PageControl1.ActivePage, 'lb__' + TabShortName + '__List'));
+  Button := TButton(Sender);
+  if (ListBox = nil) or (ListBox.ItemIndex = -1) then Exit;
+
+  ComponentID := O2I(ListBox.Items.Objects[ListBox.ItemIndex]);
+  BuildID := O2I(lbBuildList.Items.Objects[lbBuildList.ItemIndex]);
+  AssignedBuildID := GetBuildIDForComponent(ComponentID, TabShortName);
+  BuildName := GetBuildNameForID(BuildID);
+
+  if AssignedBuildID = -1 then begin
+    // INSERT new link
+    SQL := 'INSERT INTO BuildComponents (BuildID, Component, ComponentID) VALUES (:b, :c, :i)';
+    q:=NewQuery(S3DB);
+    q.SQL.Text := SQL;
+    q.ParamByName('b').AsInteger := BuildID;
+    q.ParamByName('c').AsString := TabShortName;
+    q.ParamByName('i').AsInteger := ComponentID;
+    q.ExecSQL;
+    EndQuery(q);
+  end
+  else if AssignedBuildID = BuildID then begin
+    // DELETE existing link
+    SQL := 'DELETE FROM BuildComponents WHERE BuildID = :b AND Component = :c AND ComponentID = :i';
+    q:=NewQuery(S3DB);
+    q.SQL.Text := SQL;
+    q.ParamByName('b').AsInteger := BuildID;
+    q.ParamByName('c').AsString := TabShortName;
+    q.ParamByName('i').AsInteger := ComponentID;
+    q.ExecSQL;
+    EndQuery(q);
+  end
+  else begin
+    // Assigned to a different build — confirm move
+    if MessageDlg(
+      'This component is already assigned to "' + GetBuildNameForID(AssignedBuildID) + '".' + LineEnding +
+      'Move it to "' + BuildName + '"?', mtConfirmation, [mbYes, mbNo], 0) = mrYes then
+    begin
+      SQL := 'UPDATE BuildComponents SET BuildID = :b WHERE Component = :c AND ComponentID = :i';
+      q:=NewQuery(S3DB);
+      q.SQL.Text := SQL;
+      q.ParamByName('b').AsInteger := BuildID;
+      q.ParamByName('c').AsString := TabShortName;
+      q.ParamByName('i').AsInteger := ComponentID;
+      q.ExecSQL;
+      EndQuery(q);
+    end;
+  end;
+
+  // TODO: Log assignment change to memo here
+
+  UpdateBuildAssignmentStatus(TabShortName);
+end;
+
+
+function TForm1.GetBuildNameForID(ID: integer): string;
+(*
+@AI:summary: Retrieves the human-readable name of a build given its BuildID.
+@AI:params: ID: The BuildID to look up.
+@AI:returns: The BuildName corresponding to the specified BuildID.
+*)
+var
+  q: TSQLQuery;
+  sql: string;
+begin
+  q := NewQuery(s3db);
+  sql := 'SELECT BuildName FROM BuildList WHERE BuildID = :b';
+  q.SQL.Text := sql;
+  q.ParamByName('b').AsInteger := ID;
+  q.Open;
+  Result := q.FieldByName('BuildName').AsString;
+  EndQuery(q);
+end;
+
+procedure TForm1.UpdateBuildAssignmentStatus(const TabShortName: string);
+(*
+@AI:summary: Updates the status of a build assignment based on the provided tab short name.
+@AI:params: TabShortName: The short name of the tab used to identify the build assignment to be updated.
+@AI:returns:
+*)
+var
+  ListBox: TListBox;
+  Panel: TPanel;
+  LabelStatus: TLabel;
+  ButtonAction: TButton;
+  SelectedComponentID, BuildID, AssignedBuildID: Integer;
+  AssignedBuildName: string;
+  Prefix: string;
+begin
+  Prefix := TabShortName + '__BuildAssign__';
+  ListBox := TListBox(FindAnyComponent(PageControl1.ActivePage, 'lb__' + TabShortName + '__List'));
+  Panel := TPanel(FindAnyComponent(PageControl1.ActivePage, SafeComponentName(Prefix + 'Panel')));
+  LabelStatus := TLabel(FindAnyComponent(PageControl1.ActivePage, SafeComponentName(Prefix + 'Label')));
+  ButtonAction := TButton(FindAnyComponent(PageControl1.ActivePage, SafeComponentName(Prefix + 'Button')));
+
+  if (ListBox = nil) or (Panel = nil) or (LabelStatus = nil) or (ButtonAction = nil) then Exit;
+  if ListBox.ItemIndex = -1 then Exit;
+
+  SelectedComponentID := O2I(ListBox.Items.Objects[ListBox.ItemIndex]);
+  BuildID := O2I(lbBuildList.Items.Objects[lbBuildList.ItemIndex]);
+
+  AssignedBuildID := GetBuildIDForComponent(SelectedComponentID, TabShortName);
+  AssignedBuildName := GetBuildNameForID(AssignedBuildID);        // Ditto
+
+  // Update label
+  if AssignedBuildID = -1 then
+    LabelStatus.Caption := 'Currently assigned to:' + LineEnding + '(Unassigned)'
+  else
+    LabelStatus.Caption := 'Currently assigned to:' + LineEnding + AssignedBuildName;
+
+  // Update button
+  if AssignedBuildID = -1 then begin
+    ButtonAction.Caption := 'Assign to Build';
+  end else if AssignedBuildID = BuildID then begin
+    ButtonAction.Caption := 'Remove from Build';
+  end else begin
+    ButtonAction.Caption := 'Move from ' + AssignedBuildName + LineEnding + 'to current build';
+  end;
+end;
+
+
 procedure TForm1.PageControl1Change (Sender: TObject);
 (*
 @AI:summary: Update the form UI for the specified tab.  Update the visibility of the menu item for the selected tab.  This is only a UI update, no data change here.
@@ -624,22 +1026,29 @@ begin
   end;
 
   // Skip processing if this is not a dynamic tab
-  if not DynamicTab then begin
-    Exit;
-  end;
+  if DynamicTab then begin
+    // Get the table name (remove spaces from tab caption)
+    ShortName := StringReplace(PageControl1.ActivePage.Caption, ' ', '', [rfReplaceAll]);
+    TableName := 'Device_' + ShortName;
 
-  // Get the table name (remove spaces from tab caption)
-  ShortName := StringReplace(PageControl1.ActivePage.Caption, ' ', '', [rfReplaceAll]);
-  TableName := 'Device_' + ShortName;
+    // Find the ListBox in the correct group box within the active tab
+    //  ListBox := tListbox(FindAnyComponent(PageControl1.ActivePage, ShortName));
+    ListBox := TListBox(FindAnyComponent(PageControl1.ActivePage, 'lb__' + ShortName + '__List'));
 
-  // Find the ListBox in the correct group box within the active tab
-  //  ListBox := tListbox(FindAnyComponent(PageControl1.ActivePage, ShortName));
-  ListBox := TListBox(FindAnyComponent(PageControl1.ActivePage, 'lb' + ShortName + 'List'));
+    if Assigned(ListBox) then begin
+      LoadDataIntoListBox(ListBox, TableName);
+      if ListBox.Count > 0 then begin
+        if ListBox.ItemIndex <> max(0, ListBox.ItemIndex) then begin
+          ListBox.ItemIndex := max(0, ListBox.ItemIndex);
+          ListBox.Click;
+        end;
+      end;
 
-  if Assigned(ListBox) then begin
-    LoadDataIntoListBox(ListBox, TableName);
-  end else begin
-    Application.MessageBox(PChar('ListBox not found for ' + TableName), 'Error', MB_OK);
+    end else begin
+      Application.MessageBox(PChar('ListBox not found for ' + TableName), 'Error', MB_OK);
+    end;
+    // Toggle the visibility of the component assignment to build panel
+    tPanel(FindAnyComponent(Form1,SafeComponentName(ShortName+'__BuildAssign__Panel'))).visible:=lbBuildList.ItemIndex>=0;
   end;
 end;
 
@@ -681,56 +1090,146 @@ begin
   end;
 end;
 
-function SafeComponentName (Raw: string): string;
+procedure TForm1.CreateBuildAssignmentPanel(Frame: TFrame1; TabShortName: string);
 (*
-@AI:summary: This function likely sanitizes or processes a raw string to ensure it is safe for use as a component name.
-@AI:params: Raw: The input string that needs to be sanitized or processed.
-@AI:returns: A sanitized string that is safe for use as a component name.
+@AI:summary: Adds a right-aligned panel to Frame1 with build assignment label, button, and a memo log.
+@AI:params: Frame: The TFrame1 container to embed the controls into.
+@AI:params: TabShortName: The component name (e.g., 'Motherboards') used for dynamic naming.
+@AI:returns: No result. All components are added directly to Frame1.
 *)
 var
-  Cleaned: string;
-  i: integer;
+  AssignPanel: TPanel;
+  AssignLabel: TLabel;
+  AssignButton: TButton;
+  AssignMemo: TMemo;
+  Prefix: string;
 begin
-  SetLength(Cleaned, Length(Raw));
-  for i := 1 to Length(Raw) do begin
-    if Raw[i] in ['A'..'Z', 'a'..'z', '0'..'9', '_'] then begin
-      Cleaned[i] := Raw[i];
-    end else begin
-      Cleaned[i] := '_';
-    end;
-  end;
+  Prefix := TabShortName + '__BuildAssign__';
 
-  Cleaned := Trim(Cleaned);
-  if Cleaned = '' then begin
-    Cleaned := 'X';
-  end;
+  AssignPanel := TPanel.Create(Frame);
+  AssignPanel.Name := SafeComponentName(Prefix + 'Panel');
+  AssignPanel.Parent := Frame;
+  AssignPanel.Align := alRight;
+  AssignPanel.Width := trunc(220*1.5);
+  AssignPanel.BevelOuter := bvNone;
 
-  if Cleaned[1] in ['0'..'9'] then begin
-    Cleaned := 'C_' + Cleaned;
-  end;
+  AssignLabel := TLabel.Create(AssignPanel);
+  AssignLabel.Name := SafeComponentName(Prefix + 'Label');
+  AssignLabel.Parent := AssignPanel;
+  AssignLabel.Align := alTop;
+  AssignLabel.Alignment := taRightJustify;
+  AssignLabel.Font.Style := [fsBold];
+  AssignLabel.Caption := 'Currently assigned to:'+LineEnding+'(Unassigned)';
+  AssignLabel.AutoSize := False;
+  AssignLabel.Height := 36;
 
-  Result := Cleaned;
+  AssignButton := TButton.Create(AssignPanel);
+  AssignButton.Name := SafeComponentName(Prefix + 'Button');
+  AssignButton.Parent := AssignPanel;
+  AssignButton.Align := alTop;
+  AssignButton.Caption := 'Assign to Build';
+  AssignButton.Height := 30;
+  AssignButton.OnClick:=@AssignBuildButtonClick;
+
+  AssignMemo := TMemo.Create(AssignPanel);
+  AssignMemo.Name := SafeComponentName(Prefix + 'Memo');
+  AssignMemo.Parent := AssignPanel;
+  AssignMemo.Align := alClient;
+  AssignMemo.ReadOnly := True;
+  AssignMemo.WordWrap := True;
+  AssignMemo.ScrollBars := ssVertical;
+  AssignMemo.Lines.Text :=
+    'History:' + LineEnding +
+    '- Component created: <timestamp placeholder>' + LineEnding +
+    '- Build assignment changes will appear here.';
+
 end;
 
-procedure AddGlobalFieldsToFrame (Frame: TFrame1; ComponentName: string);
+procedure tForm1.AddGlobalFieldsToFrame (Frame: TFrame1; ComponentName: string);
 (*
 @AI:summary: This function likely adds global fields to a specified frame component.
 @AI:params: Frame: The frame to which global fields will be added.
 @AI:params: ComponentName: The name of the component for which global fields are being added.
 @AI:returns:
 *)
+{ TODO -cBUG : This routine is not looking at component overrides, such as CLASS type -- Global is defined as a TEXT, but some components have a Combo defined. }
 var
-  Q: TSQLQuery;
+  Q, InsertQ: TSQLQuery;
   FieldName, FieldLabel, FieldType, ComboValues: string;
   FieldY: integer;
   LabelCtrl: TLabel;
   EditCtrl: TEdit;
   ComboCtrl: TComboBox;
+  MemDB: TSQLite3Connection;
+  MemTrans: TSQLTransaction;
+  SQL: string;
 const
   LineDisplacement = 2;
 begin
-  FieldY := LineDisplacement;
+  // Setup in-memory SQLite connection
+  MemDB := TSQLite3Connection.Create(nil);
+  MemDB.DatabaseName := ':memory:';
+  MemTrans := TSQLTransaction.Create(nil);
+  MemTrans.DataBase := MemDB;
+  MemDB.Transaction := MemTrans;
+  MemDB.Open;
+
+  // Recreate LayoutMap schema
   Q := NewQuery(S3DB);
+  try
+    Q.SQL.Text := 'SELECT sql FROM sqlite_master WHERE type = ''table'' AND name = ''LayoutMap''';
+    Q.Open;
+    if not Q.EOF then begin
+      SQL := Q.Fields[0].AsString;
+      EndQuery(Q); // Close before reuse
+
+      Q := NewQuery(MemDB);
+      Q.SQL.Text := SQL;
+      Q.ExecSQL;
+    end;
+  finally
+    EndQuery(Q);
+  end;
+
+  Q := NewQuery(S3DB);
+  Q.SQL.Text := 'SELECT * FROM LayoutMap WHERE Component IN (''GLOBAL'', :Comp)';
+  Q.ParamByName('Comp').AsString := ComponentName;
+  Q.Open;
+  InsertQ := NewQuery(MemDB);
+  try
+    while not Q.EOF do begin
+      InsertQ.SQL.Text := 'INSERT INTO LayoutMap VALUES (:Origin, :Component, :FieldName, :FieldLabel, :GroupName, :SortOrder, :ComponentType, :ComboValues)';
+      InsertQ.ParamByName('Origin').AsString := Q.FieldByName('Origin').AsString;
+      InsertQ.ParamByName('Component').AsString := Q.FieldByName('Component').AsString;
+      InsertQ.ParamByName('FieldName').AsString := Q.FieldByName('FieldName').AsString;
+      InsertQ.ParamByName('FieldLabel').AsString := Q.FieldByName('FieldLabel').AsString;
+      InsertQ.ParamByName('GroupName').AsString := Q.FieldByName('GroupName').AsString;
+      InsertQ.ParamByName('SortOrder').AsInteger := Q.FieldByName('SortOrder').AsInteger;
+      InsertQ.ParamByName('ComponentType').AsString := Q.FieldByName('ComponentType').AsString;
+      InsertQ.ParamByName('ComboValues').AsString := Q.FieldByName('ComboValues').AsString;
+      InsertQ.ExecSQL;
+      Q.Next;
+    end;
+  finally
+    EndQuery(Q);
+    EndQuery(InsertQ);
+  end;
+
+  q := NewQuery(MemDB);
+  // Remove overridden global rows
+  Q.SQL.Text := 'DELETE FROM LayoutMap WHERE Origin = ''G'' AND FieldName IN ' +
+    '(SELECT FieldName FROM LayoutMap WHERE Origin = ''C'' AND Component = :Comp)';
+  Q.ParamByName('Comp').AsString := ComponentName;
+  Q.ExecSQL;
+
+  // Normalize tag to G for unified rendering logic
+  Q.SQL.Text := 'UPDATE LayoutMap SET Origin = ''G'' WHERE Component = :Comp';
+  Q.ParamByName('Comp').AsString := ComponentName;
+  Q.ExecSQL;
+  EndQuery(q);
+
+  FieldY := LineDisplacement;
+  Q := NewQuery(MemDB);
   try
     Q.SQL.Text := 'SELECT FieldName, FieldLabel, ComponentType, ComboValues FROM LayoutMap WHERE Component = ''GLOBAL'' AND Origin = ''G'' ORDER BY SortOrder';
     Q.Open;
@@ -760,6 +1259,8 @@ begin
         if ComboValues <> '' then begin
           ComboCtrl.Items.Text := ComboValues;
         end;
+        ComboCtrl.OnDropDown := @cboPopulateCombo;
+        ComboCtrl.OnSelect := @cboItemSelected;
 
         GlobalComponentList.AddObject(ComboCtrl.Name + '=' + ComponentName + '.' + FieldName, ComboCtrl);
         Inc(FieldY, ComboCtrl.Height + LineDisplacement);
@@ -770,6 +1271,8 @@ begin
         ComboCtrl.Top := FieldY;
         ComboCtrl.Width := 250;
         ComboCtrl.Name := SafeComponentName(ComponentName + '__' + FieldName);
+        ComboCtrl.OnDropdown := @cboPopulateNumeric;
+        ComboCtrl.OnSelect := @cboItemSelected;
 
         GlobalComponentList.AddObject(ComboCtrl.Name + '=' + ComponentName + '.' + FieldName, ComboCtrl);
         Inc(FieldY, ComboCtrl.Height + LineDisplacement);
@@ -781,7 +1284,6 @@ begin
         EditCtrl.Top := FieldY;
         EditCtrl.Width := 250;
         EditCtrl.Name := SafeComponentName(ComponentName + '__' + FieldName);
-
         GlobalComponentList.AddObject(EditCtrl.Name + '=' + ComponentName + '.' + FieldName, EditCtrl);
         Inc(FieldY, EditCtrl.Height + LineDisplacement);
       end;
@@ -791,7 +1293,11 @@ begin
 
   finally
     EndQuery(Q);
+    MemDB.Close;
+    MemTrans.Free;
+    MemDB.Free;
   end;
+  CreateBuildAssignmentPanel(Frame, SafeComponentName(ComponentName));
 end;
 
 procedure TForm1.CreateTab (ComponentName: string);
@@ -799,6 +1305,7 @@ procedure TForm1.CreateTab (ComponentName: string);
 @AI:summary: When called, this function will create the tab and sub components required to display the component list.  This does not deal with the design-time built Build List tab or menus.
 @AI:params: ComponentName: This is the type of component that this tab is responsible for displaying, such as motherboards, sound cards, etc.
 @AI:returns:
+@AI:notes: If asked, to add events and triggers to the different components created, the CreateTab function is where it's at.
 *)
 var
   Tab: TTabSheet;
@@ -807,22 +1314,21 @@ var
   Frame1: TFrame1;
   Frame2: TFrame2;
   Q: TSQLQuery;
-  GroupName, FieldName, FieldLabelText: string;
+  GroupName, FieldName: string;
   FieldLabel: TLabel;
   LastGroupName: string;
   FieldY: integer;
   FrameCount: integer;
-  GlobalY: integer;
-  GlobalLabel: TLabel;
-  GlobalEdit: TEdit;
-  FieldType, ComboValues: string;
+  FieldType, ComboValues, FieldLabelText: string;
   Combo: TComboBox;
   Spin: tComboBox;
   Edit: TEdit;
+  GlobalY: integer;
 begin
   Tab := TTabSheet.Create(PageControl1);
   Tab.PageControl := PageControl1;
   Tab.Caption := ComponentName;
+  Tab.Name := 'ts' + SafeComponentName(ComponentName);
 
   // --- LEFT PANEL: Record list ---
   LeftPanel := TGroupBox.Create(Tab);
@@ -874,7 +1380,7 @@ begin
       // Start a new Frame2 when group changes
       if GroupName <> LastGroupName then begin
         Frame2 := TFrame2.Create(Frame1.sbGroupScroll);
-        Frame2.Name := StringReplace(ComponentName + '_' + GroupName, ' ', '', [rfReplaceAll]);
+        Frame2.Name := SafeComponentName(ComponentName + '_' + GroupName);
         Frame2.Parent := Frame1.sbGroupScroll;
         Frame2.Align := alLeft;
         Frame2.Width := 250;
@@ -889,9 +1395,9 @@ begin
 
       // Add Label
       FieldLabel := TLabel.Create(Frame2);
-      FieldLabel.Name := StringReplace('label_' + ComponentName + '_' + GroupName + '_' + FieldName, ' ', '', [rfReplaceAll]);
+      FieldLabel.Name := SafeComponentName('label_' + ComponentName + '_' + GroupName + '_' + FieldName);
       FieldLabel.Parent := Frame2.CompDetails;
-      FieldLabel.Caption := FieldName;
+      FieldLabel.Caption := q.FieldByName('FieldLabel').AsString;
       FieldLabel.Left := 8;
       FieldLabel.Top := FieldY;
 
@@ -902,13 +1408,15 @@ begin
       ComboValues := Q.FieldByName('ComboValues').AsString;
 
       // Component creation
-      if FieldType = 'Combo' then begin
+      if LowerCase(FieldType) = 'combo' then begin
         Combo := TComboBox.Create(Frame2.CompDetails);
         Combo.Parent := Frame2.CompDetails;
         Combo.Left := 8;
         Combo.Top := FieldY + FieldLabel.Height + 4;
         Combo.Width := 200;
         Combo.Name := SafeComponentName(ComponentName + '__' + FieldName);
+        Combo.OnDropDown := @cboPopulateCombo;
+        Combo.OnSelect := @cboItemSelected;
 
         // Add static combo values from LayoutMap
         if ComboValues <> '' then begin
@@ -918,7 +1426,7 @@ begin
 
         // Add to registry
         GlobalComponentList.AddObject(Combo.Name + '=' + ComponentName + '.' + FieldName, Combo);
-      end else if FieldType = 'Integer' then begin
+      end else if lowercase(FieldType) = 'integer' then begin
         Spin := TComboBox.Create(Frame2.CompDetails);
         Spin.Parent := Frame2.CompDetails;
         Spin.Left := 8;
@@ -926,6 +1434,8 @@ begin
         Spin.Width := 200;
         Spin.Name := SafeComponentName(ComponentName + '__' + FieldName);
         Inc(FieldY, FieldLabel.Height + Spin.Height + 12);
+        Spin.OnDropDown := @cboPopulateNumeric;
+        Spin.OnSelect := @cboItemSelected;
 
         GlobalComponentList.AddObject(Spin.Name + '=' + ComponentName + '.' + FieldName, Spin);
       end else begin
@@ -962,24 +1472,24 @@ var
   TabShortName: string;
   DeviceID: integer;
 begin
-  if not (Sender is TListBox) then begin
-    Exit;
+  if (Sender is TListBox) then begin
+    lb := TListBox(Sender);
+
+    // Get DeviceID from selected item
+    DeviceID := ListObject(lb);
+    if DeviceID = -1 then begin
+      Exit;
+    end;
+
+    // Get the tab short name
+    ParentGroup := TGroupBox(lb.Parent);
+    ParentTab := TTabSheet(ParentGroup.Parent);
+    TabShortName := StringReplace(ParentTab.Caption, ' ', '', [rfReplaceAll]);
+
+    // Call general-purpose spec population logic
+    PopulateSpecsPane(DeviceID, TabShortName);
+    UpdateBuildAssignmentStatus(TabShortName);
   end;
-  lb := TListBox(Sender);
-
-  // Get DeviceID from selected item
-  DeviceID := ListObject(lb);
-  if DeviceID = -1 then begin
-    Exit;
-  end;
-
-  // Get the tab short name
-  ParentGroup := TGroupBox(lb.Parent);
-  ParentTab := TTabSheet(ParentGroup.Parent);
-  TabShortName := StringReplace(ParentTab.Caption, ' ', '', [rfReplaceAll]);
-
-  // Call general-purpose spec population logic
-  PopulateSpecsPane(DeviceID, TabShortName);
 end;
 
 procedure TForm1.PopulateSpecsPane (DeviceID: integer; const TabShortName: string);
@@ -988,33 +1498,16 @@ procedure TForm1.PopulateSpecsPane (DeviceID: integer; const TabShortName: strin
 @AI:params: DeviceID: The unique identifier for the device whose specifications are to be populated.
 @AI:params: TabShortName: The short name of the tab where the specifications will be displayed.
 @AI:returns:
-TODO: Get rid of the Exit/Continue garbage
-TODO: This will break due to the change from tEdits only over to tEdits and tCombos.  We'll need to work intelligence into this function.
 *)
 var
   Query: TSQLQuery;
-  TabSheet: TTabSheet;
-  SpecsGroup: TGroupBox;
-  InfoScroll: TScrollBox;
   FieldIndex: integer;
   FieldName, ComponentName: string;
-  EditField: TEdit;
+  SubjectComponent: TWinControl;
+  CI: integer;
+  FieldValue: string;
 begin
-  // Locate the tab and specs scroll box
-  TabSheet := PageControl1.FindChildControl('ts' + TabShortName) as TTabSheet;
-  if not Assigned(TabSheet) then begin
-    Exit;
-  end;
-
-  SpecsGroup := TabSheet.FindComponent('gb' + TabShortName + 'Specs') as TGroupBox;
-  if not Assigned(SpecsGroup) then begin
-    Exit;
-  end;
-
-  InfoScroll := SpecsGroup.FindComponent('sb' + TabShortName + 'InfoPanel') as TScrollBox;
-  if not Assigned(InfoScroll) then begin
-    Exit;
-  end;
+  // Converting to the GlobalComponents stuffs
 
   // Run the query
   Query := NewQuery(S3DB);
@@ -1027,15 +1520,22 @@ begin
       for FieldIndex := 0 to Query.Fields.Count - 1 do begin
         FieldName := Query.Fields[FieldIndex].FieldName;
 
-        // Skip internal fields if needed
-        if FieldName = 'DeviceID' then begin
-          Continue;
+        ComponentName := TabShortName + '__' + FieldName;
+        CI := GlobalComponentList.IndexOfName(ComponentName);
+        if length(Query.Fields[FieldIndex].AsString) = 0 then begin
+          FieldValue := '';
+        end else begin
+          FieldValue := Query.Fields[FieldIndex].Value;
         end;
-
-        ComponentName := TabShortName + '_' + FieldName;
-        EditField := InfoScroll.FindComponent(ComponentName) as TEdit;
-        if Assigned(EditField) then begin
-          EditField.Text := Query.FieldByName(FieldName).AsString;
+        if ci <> -1 then begin
+          SubjectComponent := TWinControl(GlobalComponentList.Objects[CI]);
+          if SubjectComponent is TEdit then begin
+            TEdit(SubjectComponent).Text := FieldValue;
+            TEdit(SubjectComponent).OnExit := @ComponentExit;
+          end else if SubjectComponent is TComboBox then begin
+            TComboBox(SubjectComponent).Text := FieldValue;
+            TComboBox(SubjectComponent).OnExit := @ComponentExit;
+          end;
         end;
       end;
     end;
@@ -1064,87 +1564,76 @@ var
 begin
   // Get the currently selected tab
   ActiveTab := PageControl1.ActivePage;
-  if ActiveTab = nil then begin
-    Exit;
-  end;
+  if assigned(ActiveTab) then begin
 
-  // Strip spaces from tab caption to match the expected naming convention
-  StrippedTabName := StringReplace(ActiveTab.Caption, ' ', '', [rfReplaceAll]);
+    // Strip spaces from tab caption to match the expected naming convention
+    StrippedTabName := StringReplace(ActiveTab.Caption, ' ', '', [rfReplaceAll]);
 
-  // Check if this is a dynamic tab
-  IsDynamicTab := False;
-  Ini := TIniFile.Create('Structure.ini');
-  try
-    IsDynamicTab := Ini.ValueExists('ORDER', ActiveTab.Caption);
-  finally
-    Ini.Free;
-  end;
-
-  if not IsDynamicTab then begin
+    // Check if this is a dynamic tab
     IsDynamicTab := ActiveTab.Name.EndsWith('_T');
-  end;
-
-  // If it's not dynamic, exit (static tabs like "Build List" don't have specs)
-  if not IsDynamicTab then begin
-    Exit;
-  end;
-
-  // Find the dynamically created Specs group box in this tab
-  SpecsGroup := TGroupBox(ActiveTab.FindComponent('gb' + StrippedTabName + 'Specs'));
-  if SpecsGroup = nil then begin
-    Exit;
-  end;  // Prevent crashes if the component doesn’t exist
-
-  // Clear previous fields in the Specs panel
-  for i := SpecsGroup.ControlCount - 1 downto 0 do begin
-    SpecsGroup.Controls[i].Free;
-  end;
-
-  // Query the database for this specific device
-  Query := NewQuery(S3DB);
-  try
-    Query.SQL.Text := 'SELECT * FROM Device_' + StrippedTabName + ' WHERE DeviceID = :DeviceID';
-    Query.ParamByName('DeviceID').AsInteger := DeviceID;
-    Query.Open;
-
-    if Query.RecordCount = 0 then begin
-      Exit;
+    if not IsDynamicTab then begin
+      Ini := TIniFile.Create('Structure.ini');
+      IsDynamicTab := Ini.ValueExists('ORDER', ActiveTab.Caption);
+      Ini.Free;
     end;
 
-    YPos := 10;
+    // If it's not dynamic, exit (static tabs like "Build List" don't have specs)
+    if IsDynamicTab then begin
 
-    for i := 0 to Query.FieldCount - 1 do begin
-      FieldName := Query.Fields[i].FieldName;
-      FieldValue := Query.Fields[i].AsString;
+      // Find the dynamically created Specs group box in this tab
+      SpecsGroup := TGroupBox(ActiveTab.FindComponent('gb' + StrippedTabName + 'Specs'));
+      if assigned(SpecsGroup) then begin
+        // Clear previous fields in the Specs panel
+        for i := SpecsGroup.ControlCount - 1 downto 0 do begin
+          SpecsGroup.Controls[i].Free;
+        end;
 
-      // Skip DeviceID (read-only)
-      if FieldName = 'DeviceID' then begin
-        Continue;
-      end;
+        // Query the database for this specific device
+        Query := NewQuery(S3DB);
+        try
+          Query.SQL.Text := 'SELECT * FROM Device_' + StrippedTabName + ' WHERE DeviceID = :DeviceID';
+          Query.ParamByName('DeviceID').AsInteger := DeviceID;
+          Query.Open;
 
-      // Create a label
-      LabelField := TLabel.Create(SpecsGroup);
-      LabelField.Parent := SpecsGroup;
-      LabelField.Caption := FieldName + ':';
-      LabelField.Top := YPos;
-      LabelField.Left := 10;
+          if Query.RecordCount > 0 then begin
+            YPos := 10;
 
-      // Create an input field
-      EditField := TEdit.Create(SpecsGroup);
-      EditField.Parent := SpecsGroup;
-      EditField.Text := FieldValue;
-      EditField.Top := YPos;
-      EditField.Left := 120;
-      EditField.Width := 200;
-      EditField.Name := 'edit_' + FieldName;
+            for i := 0 to Query.FieldCount - 1 do begin
+              FieldName := Query.Fields[i].FieldName;
+              FieldValue := Query.Fields[i].AsString;
 
-      YPos := YPos + EditHeight;
-    end;
+              // Skip DeviceID (read-only)
+              if FieldName = 'DeviceID' then begin
+                Continue;
+              end;
 
-    Query.Close;
-  finally
-    EndQuery(Query);
-  end;
+              // Create a label
+              LabelField := TLabel.Create(SpecsGroup);
+              LabelField.Parent := SpecsGroup;
+              LabelField.Caption := FieldName + ':';
+              LabelField.Top := YPos;
+              LabelField.Left := 10;
+
+              // Create an input field
+              EditField := TEdit.Create(SpecsGroup);
+              EditField.Parent := SpecsGroup;
+              EditField.Text := FieldValue;
+              EditField.Top := YPos;
+              EditField.Left := 120;
+              EditField.Width := 200;
+              EditField.Name := 'edit_' + FieldName;
+
+              YPos := YPos + EditHeight;
+            end;
+
+            Query.Close;
+          end; // if Query.RecordCount
+        finally
+          EndQuery(Query);
+        end;
+      end; // if assigned(SpecsGroup)
+    end; // if IsDynamicTab
+  end; // if assigned(ActiveTab)
 end;
 
 procedure TForm1.PopulateComponentList (ComponentName: string; TargetListBox: TListBox);
@@ -1567,7 +2056,7 @@ begin
       TabCaption := PageControl1.Pages[i].Caption;
     end;
   end;
-
+  { TODO : Ensure uniqueness before insert -- Currently will not fail politely }
   if TabCaption <> '' then begin
     if PromptAndValidateQRCodeAndTitle(TabCaption, QRCode, QRString, Title) then begin
       InsertSQL := 'INSERT INTO ' + TableName + ' (QRCode, Title) VALUES (:QRCode, :Title)';
@@ -1585,10 +2074,10 @@ begin
       for i := 0 to PageControl1.PageCount - 1 do begin
         TabSheet := PageControl1.Pages[i];
         if StringReplace(TabSheet.Caption, ' ', '', [rfReplaceAll]) = ShortName then begin
-          ListBox := TListBox(FindAnyComponent(TabSheet, 'lb' + ShortName + 'List'));
+          ListBox := TListBox(FindAnyComponent(TabSheet, 'lb__' + ShortName + '__List'));
           if Assigned(ListBox) then begin
             LoadDataIntoListBox(ListBox, TableName);
-            MatchIndex := ListBox.Items.IndexOf(QRString);
+            MatchIndex := ListBox.Items.IndexOf(QRString+'- '+Title);
             if MatchIndex >= 0 then begin
               ListBox.ItemIndex := MatchIndex;
               ListBox.OnClick(ListBox);

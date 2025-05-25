@@ -55,53 +55,53 @@ begin
 
       for j := 0 to FieldList.Count - 1 do begin
         FieldName := Trim(FieldList[j]);
-        if (FieldName = '') or (GlobalFields.IndexOf(FieldName) <> -1) then begin
-          Continue;
-        end;
+        if (FieldName <> '') (*or (GlobalFields.IndexOf(FieldName) <> -1)*) then begin
 
-        RawLine := Ini.ReadString(Component, FieldName, '');
-        FieldLabel := FieldName;
-        GroupName := '';
-        ComponentType := 'Text';
-        ComboValues := '';
+          RawLine := Ini.ReadString(Component, FieldName, '');
+          FieldLabel := FieldName;
+          GroupName := '';
+          ComponentType := 'Text';
+          ComboValues := '';
 
-        semiPos := Pos(';', RawLine);
-        if semiPos > 0 then begin
-          FieldLabel := Copy(RawLine, semiPos + 1, MaxInt);
-        end;
-
-        pipePos := Pos('|', FieldLabel);
-        if pipePos > 0 then begin
-          GroupName := Trim(Copy(FieldLabel, pipePos + 1, MaxInt));
-          FieldLabel := Trim(Copy(FieldLabel, 1, pipePos - 1));
-        end else begin
-          FieldLabel := Trim(FieldLabel);
-        end;
-
-        // Type detection
-        if Pos(lowercase('Combo['), lowercase(RawLine)) = 1 then begin
-          ComponentType := 'Combo';
-          closePos := Pos(']', RawLine);
-          if closePos > 0 then begin
-            comboBlock := Copy(RawLine, 7, closePos - 7);
-            ComboValues := StringReplace(comboBlock, '_', LineEnding, [rfReplaceAll]);
+          semiPos := Pos(';', RawLine);
+          if semiPos > 0 then begin
+            FieldLabel := Copy(RawLine, semiPos + 1, MaxInt);
           end;
-        end else if Pos(lowercase('Integer'), LowerCase(RawLine)) = 1 then begin
-          ComponentType := 'Integer';
+
+          pipePos := Pos('|', FieldLabel);
+          if pipePos > 0 then begin
+            GroupName := Trim(Copy(FieldLabel, pipePos + 1, MaxInt));
+            FieldLabel := Trim(Copy(FieldLabel, 1, pipePos - 1));
+          end else begin
+            FieldLabel := Trim(FieldLabel);
+          end;
+
+          // Type detection
+          if Pos(lowercase('Combo['), lowercase(RawLine)) = 1 then begin
+            ComponentType := 'Combo';
+            closePos := Pos(']', RawLine);
+            if closePos > 0 then begin
+              comboBlock := Copy(RawLine, 7, closePos - 7);
+              ComboValues := StringReplace(comboBlock, '_', LineEnding, [rfReplaceAll]);
+            end;
+          end else if Pos(lowercase('Integer'), LowerCase(RawLine)) = 1 then begin
+            ComponentType := 'Integer';
+          end;
+
+          Q.SQL.Text := 'INSERT INTO LayoutMap (Origin, Component, FieldName, FieldLabel, GroupName, SortOrder, ComponentType, ComboValues) VALUES (:grp, :comp, :field, :label, :groupname, :sort, :type, :combo)';
+          Q.ParamByName('grp').AsString := 'C';
+          Q.ParamByName('comp').AsString := Component;
+          Q.ParamByName('field').AsString := FieldName;
+          Q.ParamByName('label').AsString := FieldLabel;
+          Q.ParamByName('groupname').AsString := GroupName;
+          Q.ParamByName('sort').AsInteger := SortOrder;
+          Q.ParamByName('type').AsString := ComponentType;
+          Q.ParamByName('combo').AsString := ComboValues;
+          Q.ExecSQL;
+//          S3DB.Transaction.Commit;
+
+          Inc(SortOrder);
         end;
-
-        Q.SQL.Text := 'INSERT INTO LayoutMap (Origin, Component, FieldName, FieldLabel, GroupName, SortOrder, ComponentType, ComboValues) VALUES (:grp, :comp, :field, :label, :groupname, :sort, :type, :combo)';
-        Q.ParamByName('grp').AsString := 'C';
-        Q.ParamByName('comp').AsString := Component;
-        Q.ParamByName('field').AsString := FieldName;
-        Q.ParamByName('label').AsString := FieldLabel;
-        Q.ParamByName('groupname').AsString := GroupName;
-        Q.ParamByName('sort').AsInteger := SortOrder;
-        Q.ParamByName('type').AsString := ComponentType;
-        Q.ParamByName('combo').AsString := ComboValues;
-        Q.ExecSQL;
-
-        Inc(SortOrder);
       end;
     end;
 
@@ -166,6 +166,6 @@ initialization
 @AI:initialization-actions:
 - Calls LoadLayoutMap to execute its functionality.
 *)
-LoadLayoutMap;
+  LoadLayoutMap;
 
 end.
