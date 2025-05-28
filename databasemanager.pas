@@ -17,19 +17,16 @@ procedure DefineDevices;
 var
   S3DB: TSQLite3Connection;
 
+const
+  CRLF = chr(13) + chr(10);
+
 procedure dbExec (Query: string);
 
 implementation
 
 uses Forms, LCLType, IniFiles, SQLite3, SQLDB, DB, SimpleSQLite3, frmDebug, StdCtrls,
-  Controls,
-  ShellAPI, Windows;// Used for shipping out to a shell for the SQL code
+  Controls, ShellAPI, Windows;// Used for shipping out to a shell for the SQL code
 
-var
-  slTableList: TStringList;
-
-const
-  CRLF = chr(13) + chr(10);
 
 procedure dbExec (Query: string);
 (*
@@ -409,8 +406,8 @@ function fTableList: string;
 @AI:returns: A string that represents the table list.
 *)
 begin
-  s3db.GetTableNames(slTableList);
-  Result := slTableList.Text;
+  //  s3db.GetTableNames(slTableList);
+  //  Result := slTableList.Text;
 end;
 
 procedure MergeSectionWithGlobal (Ini: TIniFile; SectionName: string; var MergedFields: TStringList);
@@ -466,10 +463,10 @@ procedure DefineBuildList;
 @AI:Note: DefineBuildList is not dynamically created or managed by the structure.ini file.  This just ensures the table exists at all.
 *)
 begin
-  slTableList.Text := fTableList;
-  if slTableList.IndexOf('BuildList') = -1 then begin
-    dbExec('CREATE TABLE [BuildList]([BuildID] INTEGER PRIMARY KEY ASC AUTOINCREMENT,[BuildQR] TEXT UNIQUE,[BuildName] TEXT,UNIQUE([BuildQR]) ON CONFLICT FAIL);');
-    dbExec('CREATE INDEX [idxBuildQR] ON [BuildList]([BuildQR] COLLATE [NOCASE] ASC);');
+  if not TableExists(S3DB,'BuildList') then begin
+      dbExec('Drop Index if exists [idxBuildQR]');
+      dbExec('CREATE TABLE [BuildList]([BuildID] INTEGER PRIMARY KEY ASC AUTOINCREMENT,[BuildQR] TEXT UNIQUE,[BuildName] TEXT,UNIQUE([BuildQR]) ON CONFLICT FAIL);');
+      dbExec('CREATE INDEX [idxBuildQR] ON [BuildList]([BuildQR] COLLATE [NOCASE] ASC);');
   end;
 end;
 
@@ -480,10 +477,19 @@ procedure DefineBuildComponents;
 @AI:returns: None.
 *)
 begin
-  slTableList.Text := fTableList;
-  if slTableList.IndexOf('BuildComponents') = -1 then begin
+  if not TableExists(s3db,'BuildComponents') then begin
+    dbExec('drop index if exists [idxBuildComponents]');
     dbExec('CREATE TABLE [BuildComponents]([BuildID] INTEGER,[Component] TEXT NOT NULL,[ComponentID] INTEGER);');
     dbExec('CREATE UNIQUE INDEX [idxBuildComponents] ON [BuildComponents](BuildID, Component, ComponentID);');
+  end;
+end;
+
+procedure DefineComponentImages;
+begin
+  if not TableExists(s3db,'ComponentImages') then begin
+    dbExec('Drop Index if exists idxComponentImages;');
+    dbExec('CREATE TABLE [ComponentImages]([ImageID] INTEGER PRIMARY KEY AUTOINCREMENT,[ComponentType] TEXT NOT NULL,[ComponentID] INTEGER NOT NULL,[FileName] TEXT NOT NULL,[CRC32] TEXT NOT NULL,[Format] TEXT NOT NULL,[Width] INTEGER,[Height] INTEGER,[OriginalFileName] TEXT,[LastCRCCheck] DATETIME,[UncompressedSize] INTEGER NOT NULL, [RawData] BLOB NOT NULL);');
+    dbExec('CREATE INDEX [idxComponentImages] ON [ComponentImages]([ComponentType] ASC,[ComponentID] ASC);');
   end;
 end;
 
@@ -542,10 +548,8 @@ initialization
 - We then ensure that the table that holds the relationships between the builds and the components.  What components belong to what builds.
 - We then ensure that we have the dynamicly created and controlled via structures.ini Device_[Components] tables is defined
 @AI:GlobalVars:
-- slTableList: Global list of SQLite3 tables being used in the project for indexing purposes.
 - s3db: Global use tSqlite3Database object.  Application wide.  Terminated/freed in another unit.
 *)
-  slTableList := TStringList.Create;
   if not OpenDB('ComputerDatabase.sqlite3', s3db) then begin
     Application.MessageBox('Could not open ComputerDatabase.sqlite3', 'Error', MB_OK);
     application.Terminate;
@@ -553,8 +557,8 @@ initialization
   DefineBuildList;
   DefineDevices;
   DefineBuildComponents;
+  DefineComponentImages;
 
 finalization
-  slTableList.Free;
 
 end.

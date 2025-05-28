@@ -1,5 +1,15 @@
 # BuildDatabase
 
+## Image Processing Dependency
+
+This project uses the [Vampyre Imaging Library](https://github.com/galfar/imaginglib) for image loading, resizing, and compression.
+
+(You may have noticed that I have forked it on my own repository, however, my code relies on whatever is in MASTER on the galfar/imaginglib)
+
+Vampyre Imaging Library is licensed under the Mozilla Public License 2.0 (MPL 2.0).
+
+No Vampyre source code is included in this repository. The library is required at build time and can be installed manually by following instructions in their repository.
+
 **BuildDatabase** is a Free Pascal (FPC) and Lazarus-based application designed to track and manage PC hardware components designed to run in the Windows environment. It dynamically constructs a SQLite3 database schema and user interface based on a declarative `structure.ini` file to assist in what hardware is present and can be used in certain builds.
 
 The intent is to catalogue all the specific bits of hardware I have ownership of and be able to quickly determine if the part is assigned to a build and only provide parts that are compatible with the motherboard and OS, etc.

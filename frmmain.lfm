@@ -1,11 +1,11 @@
 object Form1: TForm1
   Left = 633
   Height = 1028
-  Top = 0
-  Width = 1918
+  Top = -1080
+  Width = 1628
   Caption = 'Form1'
   ClientHeight = 1028
-  ClientWidth = 1918
+  ClientWidth = 1628
   Menu = MainMenu1
   OnCreate = FormCreate
   OnDestroy = FormDestroy
@@ -15,7 +15,7 @@ object Form1: TForm1
     Left = 0
     Height = 1028
     Top = 0
-    Width = 1918
+    Width = 1628
     ActivePage = tsBuildSheet
     Align = alClient
     TabIndex = 0
@@ -24,7 +24,7 @@ object Form1: TForm1
     object tsBuildSheet: TTabSheet
       Caption = 'Build List'
       ClientHeight = 1000
-      ClientWidth = 1910
+      ClientWidth = 1620
       object gbCompList1: TGroupBox
         Left = 0
         Height = 1000
@@ -53,46 +53,51 @@ object Form1: TForm1
         Left = 235
         Height = 1000
         Top = 0
-        Width = 1675
+        Width = 1385
         Align = alClient
         Caption = 'Panel1'
         ClientHeight = 1000
-        ClientWidth = 1675
+        ClientWidth = 1385
         TabOrder = 1
         object Panel2: TPanel
           Left = 1
-          Height = 209
-          Top = 790
-          Width = 1673
+          Height = 149
+          Top = 850
+          Width = 1383
           Align = alBottom
           Caption = 'To Be: Image Viewing Area'
-          ClientHeight = 209
-          ClientWidth = 1673
+          ClientHeight = 149
+          ClientWidth = 1383
           ParentBackground = False
           ParentColor = False
           TabOrder = 0
-          object sbSystemBuildSpecs1: TScrollBox
+          object sbBuildImages: TScrollBox
             Left = 1
-            Height = 207
+            Height = 147
             Top = 1
-            Width = 1671
+            Width = 1381
+            HorzScrollBar.Increment = 1
             HorzScrollBar.Page = 1
+            HorzScrollBar.Smooth = True
             HorzScrollBar.Tracking = True
             VertScrollBar.Page = 1
             VertScrollBar.Tracking = True
+            VertScrollBar.Visible = False
             Align = alClient
-            AutoSize = True
+            Color = clGray
+            ParentBackground = False
+            ParentColor = False
             TabOrder = 0
           end
         end
         object gbCompStats1: TGroupBox
           Left = 1
-          Height = 789
+          Height = 849
           Top = 1
           Width = 310
           Align = alLeft
           Caption = 'System Build Specs'
-          ClientHeight = 769
+          ClientHeight = 829
           ClientWidth = 306
           ParentBackground = False
           ParentColor = False
@@ -100,7 +105,7 @@ object Form1: TForm1
           TabOrder = 1
           object sbSystemBuildSpecs: TScrollBox
             Left = 0
-            Height = 769
+            Height = 829
             Top = 0
             Width = 306
             HorzScrollBar.Page = 1
@@ -115,22 +120,22 @@ object Form1: TForm1
         end
         object PageControl2: TPageControl
           Left = 316
-          Height = 789
+          Height = 849
           Top = 1
-          Width = 1358
+          Width = 1068
           ActivePage = TabSheet1
           Align = alClient
           TabIndex = 0
           TabOrder = 2
           object TabSheet1: TTabSheet
             Caption = 'Build Notes'
-            ClientHeight = 761
-            ClientWidth = 1350
+            ClientHeight = 821
+            ClientWidth = 1060
             object Memo1: TMemo
               Left = 0
-              Height = 741
+              Height = 801
               Top = 20
-              Width = 1350
+              Width = 1060
               Align = alClient
               ParentColor = True
               TabOrder = 0
@@ -140,7 +145,7 @@ object Form1: TForm1
               Left = 0
               Height = 20
               Top = 0
-              Width = 1350
+              Width = 1060
               Align = alTop
               Caption = 'Notes about Build'
               TabOrder = 1
@@ -152,7 +157,7 @@ object Form1: TForm1
         end
         object Splitter1: TSplitter
           Left = 311
-          Height = 789
+          Height = 849
           Top = 1
           Width = 5
         end
@@ -221,6 +226,10 @@ object Form1: TForm1
         OnClick = MenuItem8Click
       end
     end
+    object mnuLoadImage: TMenuItem
+      Caption = 'mnuLoadImage'
+      OnClick = mnuLoadImageClick
+    end
     object MenuItem2: TMenuItem
       Caption = '&Help'
       RightJustify = True
@@ -255,5 +264,20 @@ object Form1: TForm1
     OnIdle = ApplicationProperties1Idle
     Left = 40
     Top = 120
+  end
+  object OpenPictureDialog1: TOpenPictureDialog
+    FileName = 'C:\Development\Lazarus\BuildDatabase\Images\dsc-0787-53-6621683e1f859964931270.jpg'
+    Filter = 'Common Image Files (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.tif;*.tiff)|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.tif;*.tiff|All Files (*.*)|*.*'
+    InitialDir = 'C:\Development\Lazarus\BuildDatabase\Images\'
+    Left = 40
+    Top = 198
+  end
+  object PopupMenu1: TPopupMenu
+    Left = 49
+    Top = 269
+    object imagePopup: TMenuItem
+      Caption = 'Delete Image'
+      OnClick = imagePopupClick
+    end
   end
 end

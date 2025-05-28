@@ -75,14 +75,6 @@
         <UnitName Value="MiscFunctions"/>
       </Unit>
       <Unit>
-        <Filename Value="func_CreateTab.inc"/>
-        <IsPartOfProject Value="True"/>
-      </Unit>
-      <Unit>
-        <Filename Value="Retired.inc"/>
-        <IsPartOfProject Value="True"/>
-      </Unit>
-      <Unit>
         <Filename Value="frmdebug.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="DebugForm"/>
@@ -120,7 +112,9 @@
       <Filename Value="BuildDatabase"/>
     </Target>
     <SearchPaths>
-      <IncludeFiles Value="$(ProjOutDir)"/>
+      <IncludeFiles Value="$(ProjOutDir);..\..\forks\imaginglib\Source"/>
+      <Libraries Value="..\..\forks\imaginglib\Extensions\LibTiff\Compiled"/>
+      <OtherUnitFiles Value="..\..\forks\imaginglib\Source;..\..\forks\imaginglib\Source\ZLib;..\..\forks\imaginglib\Extensions;..\..\forks\imaginglib\Extensions\LibTiff"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Linking>

@@ -8,7 +8,7 @@ unit SimpleSQLite3;
 interface
 
 uses
-  Classes, SysUtils, SQLite3Conn, SQLite3, SQLDB;
+  Classes, SysUtils, SQLite3Conn, SQLDB;
 
 function OpenDB (const dbName: string; out DBObj: TSQLite3Connection): boolean;
 procedure CloseDB (var DBObj: tSqlite3Connection);
@@ -141,9 +141,12 @@ var
   dbList: TStringList;
 begin
   dbList := TStringList.Create;
-  DBObj.GetTableNames(dbList);
-  Result := dbList.IndexOf(TableName) <> -1;
-  dbList.Free;
+  try
+    DBObj.GetTableNames(dbList);
+    Result := dbList.IndexOf(TableName) <> -1;
+  finally
+    dbList.Free;
+  end;
 end;
 
 function BuildExists (DBObj: TSQLite3Connection; BuildID: integer): boolean; overload;

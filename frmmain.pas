@@ -11,7 +11,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, Menus, ComCtrls, StdCtrls,
-  ExtCtrls, LCLType, Buttons,
+  ExtCtrls, LCLType, Buttons, ButtonPanel, ExtDlgs,
   RegExpr, SQLite3Conn, SQLite3, SQLDB, TabGrouping;
 
 type
@@ -43,14 +43,18 @@ type
     MenuItem24: TMenuItem;
     MenuItem25: TMenuItem;
     MenuItem26: TMenuItem;
+    imagePopup:TMenuItem;
+    mnuLoadImage: TMenuItem;
     mnuResetManifest: TMenuItem;
     mnuAddToBuildManifest: TMenuItem;
+    OpenPictureDialog1: TOpenPictureDialog;
     PageControl2: TPageControl;
     Panel1: TPanel;
     Panel2: TPanel;
     Panel3: TPanel;
+    PopupMenu1:TPopupMenu;
     sbSystemBuildSpecs: TScrollBox;
-    sbSystemBuildSpecs1: TScrollBox;
+    sbBuildImages: TScrollBox;
     Separator2: TMenuItem;
     MenuItem8: TMenuItem;
     mnuAddBuild: TMenuItem;
@@ -58,15 +62,17 @@ type
     mnuBuildList: TMenuItem;
     PageControl1: TPageControl;
     Splitter1: TSplitter;
-    Splitter2:TSplitter;
+    Splitter2: TSplitter;
     TabSheet1: TTabSheet;
     TabSheet2: TTabSheet;
     tsBuildSheet: TTabSheet;
     procedure ApplicationProperties1Idle (Sender: TObject; var Done: boolean);
     procedure FormCreate (Sender: TObject);
     procedure FormDestroy (Sender: TObject);
+    procedure imagePopupClick(Sender:TObject);
     procedure lbBuildListClick (Sender: TObject);
     procedure Memo1Exit (Sender: TObject);
+    procedure mnuLoadImageClick (Sender: TObject);
     procedure mnuResetManifestClick (Sender: TObject);
     procedure mnuAddToBuildManifestClick (Sender: TObject);
     procedure MenuItem8Click (Sender: TObject);
@@ -81,7 +87,8 @@ type
     procedure cboPopulateNumeric (Sender: TObject);// Get unique sorted integers from the table
     procedure cboPopulateCombo (Sender: TObject);  // Get default and unique text from the table
     procedure cboItemSelected (Sender: TObject);   // Triggered when an item is selected in the dropdown
-    procedure AssignBuildButtonClick(Sender: TObject);
+    procedure AssignBuildButtonClick (Sender: TObject);
+    procedure ThumbnailClick (Sender: TObject);
   private
     procedure CreateTab (ComponentName: string);
 
@@ -105,10 +112,15 @@ type
     function AddBuildComponent (ShortName: string): boolean;
     function DeleteBuildComponent (ShortName: string): boolean;
     procedure AddGlobalFieldsToFrame (Frame: TFrame1; ComponentName: string);
-    procedure CreateBuildAssignmentPanel(Frame: TFrame1; TabShortName: string);
-    procedure UpdateBuildAssignmentStatus(const TabShortName: string);  public
-    function GetBuildIdForComponent(ComponentID: integer; Component: string): integer;
-    function GetBuildNameForID(ID:integer):string;
+    procedure CreateBuildAssignmentPanel (Frame: TFrame1; TabShortName: string);
+    procedure UpdateBuildAssignmentStatus (const TabShortName: string);
+
+    // Image dealings
+    procedure ImportImageForComponent (ImagePath: string; ComponentType: string; ComponentID: integer);
+    procedure ReloadImagesOnScreen;
+  public
+    function GetBuildIdForComponent (ComponentID: integer; Component: string): integer;
+    function GetBuildNameForID (ID: integer): string;
   end;
 
 var
@@ -117,44 +129,18 @@ var
 
 implementation
 
-uses IniFiles, SimpleSQLite3, DatabaseManager, MiscFunctions, ComponentDetails, Math;
+uses IniFiles, SimpleSQLite3, DatabaseManager, MiscFunctions, ComponentDetails, DB,
+  Math, Imaging, ImagingTypes, ImagingClasses, ImagingJPEG, zlib;
 
   {$R *.lfm}
 
   { TForm1 }
 var
   MenuToggleList: TStringList;
-  ListOfCustomObjects: TStringList;
+  //  ListOfCustomObjects: TStringList;
 
 const
   EditHeight = 25;
-
-
-  //function FindAnyComponent (Root: TComponent; const Name: string): TComponent;
-  //(*
-  //@AI:summary: This function likely searches for a component by its name within a specified root component.
-  //@AI:params: Root: The root component from which the search for the named component begins.
-  //@AI:params: Name: The name of the component to be searched for within the root component.
-  //@AI:returns: The function is expected to return the found component or nil if not found.
-  //*)
-  //var
-  //  i: integer;
-  //  Found: TComponent;
-  //begin
-  //  if Root.Name = Name then begin
-  //    Exit(Root);
-  //  end;
-  //
-  //  for i := 0 to Root.ComponentCount - 1 do begin
-  //    Found := FindAnyComponent(Root.Components[i], Name);
-  //    if Assigned(Found) then begin
-  //      Exit(Found);
-  //    end;
-  //  end;
-  //
-  //  Result := nil;
-  //end;
-  //
 
 function FindAnyComponent (Root: TComponent; const Name: string): TComponent;
 (*
@@ -224,23 +210,29 @@ procedure DeleteChildObjects (Sender: TComponent);
 *)
 var
   i, CountBefore: integer;
-  ControlList: tList;
+  ControlList: TList;
+  ControlName: string;
 begin
   // Code generated in this function by AI due to author being an I-D-Ten-T.
   if (Sender is TWinControl) then begin
     CountBefore := TWinControl(Sender).ControlCount;
     if CountBefore <> 0 then begin
-      ControlList:=TList.Create;
+      ControlList := TList.Create;
       for i := 0 to CountBefore - 1 do begin
         ControlList.Add(TWinControl(Sender).Controls[i]);
       end;
 
       // Now delete from stored list
-      for i := ControlList.Count-1 downto 0 do begin
-        if (tWinControl(ControlList[i]) is TGroupBox) or (tWinControl(ControlList[i]) is tPanel) then begin
+      for i := ControlList.Count - 1 downto 0 do begin
+        if (tWinControl(ControlList[i]) is TGroupBox) then begin
+          tComboBox(ControlList[i]).Free;
+        end else if (tWinControl(ControlList[i]) is tPanel) then begin
           DeleteChildObjects(TWinControl(ControlList[i]));
-        end; // Recursively delete child controls
-        tWinControl(ControlList[i]).Free;
+          tPanel(ControlList[i]).Free;
+        end else if (TControl(ControlList[i]) is TImage) then begin
+          TImage(ControlList[i]).Picture.Clear;
+          tImage(ControlList[i]).Free;
+        end;
       end;
       ControlList.Free;
     end;
@@ -725,7 +717,7 @@ begin
   end;
   PageControl1.ActivePageIndex := 0;
   PageControl1Change(nil);
-  ListOfCustomObjects := TStringList.Create;
+  //  ListOfCustomObjects := TStringList.Create;
 
   DeleteChildObjects(sbSystemBuildSpecs);
   RefreshBuildList;
@@ -758,13 +750,31 @@ procedure TForm1.FormDestroy (Sender: TObject);
 begin
   // TODO: Really gotta validate this cleanup process.
   // Clean up everything in the tab sheets
-  while ListOfCustomObjects.Count > 0 do begin
-  end;
+
   MenuToggleList.Free;
 
   DeleteChildObjects(TComponent(sbSystemBuildSpecs));
   CleanupDynamicMenus;
 end;
+
+procedure TForm1.imagePopupClick(Sender:TObject);
+var
+  ImageID:integer;
+  q:TSQLQuery;
+begin
+  if Application.MessageBox('Are you sure you wish to delete this image?','Delete Image',MB_YESNO+MB_ICONQUESTION)=ID_YES then begin
+    ImageID:=TImage(PopupMenu1.PopupComponent).Tag;
+    q:=NewQuery(s3db);
+    q.SQL.Text:='delete from ComponentImages where ImageID=:ImageID';
+    q.ParamByName('ImageID').AsInteger:=ImageID;
+    q.ExecSQL;
+    EndQuery(q);
+    ReloadImagesOnScreen;
+  end;
+
+end;
+
+
 
 procedure TForm1.lbBuildListClick (Sender: TObject);
 (*
@@ -780,6 +790,7 @@ begin
   RenderComponentGroups;
   sbSystemBuildSpecs.EndUpdateBounds;
   LoadBuildDetails;
+  ReloadImagesOnScreen;
 end;
 
 procedure TForm1.Memo1Exit (Sender: TObject);
@@ -801,6 +812,376 @@ begin
       EndQuery(q);
     end;
     Memo1.Modified := False;
+  end;
+end;
+
+function CompressZlib (Input: TMemoryStream): TMemoryStream;
+var
+  SrcLen, DstLen: uLongf;
+  DestBuf: pBytef;
+  Status: integer;
+begin
+  SrcLen := Input.Size;
+  DstLen := SrcLen + (SrcLen div 10) + 12;
+
+  GetMem(DestBuf, DstLen);
+
+  // ✳️ DstLen is passed as pointer
+  Status := compress(DestBuf, @DstLen, pBytef(Input.Memory), SrcLen);
+  if Status <> Z_OK then begin
+    raise Exception.CreateFmt('Compression failed: %d', [Status]);
+  end;
+
+  Result := TMemoryStream.Create;
+  Result.WriteBuffer(DestBuf^, DstLen);
+  Result.Position := 0;
+
+  FreeMem(DestBuf);
+end;
+
+function DecompressZlib (Input: TMemoryStream; ExpectedSize: uLongf): TMemoryStream;
+var
+  SrcLen, DstLen: uLongf;
+  DestBuf: pBytef;
+  Status: integer;
+begin
+  SrcLen := Input.Size;
+  DstLen := ExpectedSize;
+
+  GetMem(DestBuf, DstLen);
+
+  Status := uncompress(DestBuf, @DstLen, pBytef(Input.Memory), SrcLen);
+  if Status <> Z_OK then begin
+    raise Exception.CreateFmt('Decompression failed: %d', [Status]);
+  end;
+
+  Result := TMemoryStream.Create;
+  Result.WriteBuffer(DestBuf^, DstLen);
+  Result.Position := 0;
+
+  FreeMem(DestBuf);
+end;
+
+procedure TForm1.ImportImageForComponent (ImagePath: string; ComponentType: string; ComponentID: integer);
+var
+  Img: TImageData;
+  OutStream: TMemoryStream;
+  CompStream: TMemoryStream;
+  CRC32: string;
+  SQL: string;
+  Q: TSQLQuery;
+  ImageID: integer;
+  FileName: string;
+  lWidth, lHeight: integer;
+begin
+  // Load & resize
+  if not LoadImageFromFile(ImagePath, Img) then begin
+    raise Exception.Create('Failed to load image: ' + ImagePath);
+  end;
+  OutStream := TMemoryStream.Create;
+  OutStream.LoadFromFile(ImagePath);
+  OutStream.Free;
+  ResizeImageMax(Img, 1024, 1024); // Maintain aspect ratio, no upscale
+  lWidth := Img.Width;
+  lHeight := Img.Height;
+
+  // Convert to JPEG
+  OutStream := TMemoryStream.Create;
+  try
+    SaveImageToStream('jpg', OutStream, Img);
+    OutStream.Position := 0;
+
+    // Compress the data
+    CompStream := CompressZlib(OutStream);
+    // Generate CRC32
+    CRC32 := CalcCRC32Hex(CompStream);  // You'll get this helper too
+    CompStream.Position := 0;
+
+    // Insert placeholder to get ImageID
+    SQL := 'INSERT or replace INTO ComponentImages (ComponentType, ComponentID, FileName, CRC32, Format, Width, Height, OriginalFileName, UncompressedSize, RawData) ' +
+      'VALUES (:ctype, :cid, :fname, :crc, :fmt, :w, :h, :oname, :us, :rd);';
+    Q := NewQuery(S3DB);
+    Q.SQL.Text := SQL;
+    Q.ParamByName('ctype').AsString := ComponentType;
+    Q.ParamByName('cid').AsInteger := ComponentID;
+    Q.ParamByName('fname').AsString := ''; // will update after we get ID
+    Q.ParamByName('crc').AsString := CRC32;
+    Q.ParamByName('fmt').AsString := 'JPEG';
+    Q.ParamByName('w').AsInteger := lWidth;
+    Q.ParamByName('h').AsInteger := lHeight;
+    Q.ParamByName('oname').AsString := ExtractFileName(ImagePath);
+    Q.ParamByName('us').AsInteger := OutStream.Size;
+    Q.ParamByName('rd').LoadFromStream(CompStream, ftBlob);
+    Q.ExecSQL;
+
+    // Get ImageID
+    Q.SQL.Text := 'SELECT last_insert_rowid() AS ImageID;';
+    Q.Open;
+    ImageID := Q.FieldByName('ImageID').AsInteger;
+    EndQuery(Q);
+
+    // Build final name
+    FileName := Format('%s_%d_%d.jpg', [ComponentType, ComponentID, ImageID]);
+
+    // Update FileName in DB
+    SQL := 'UPDATE ComponentImages SET FileName = :fname WHERE ImageID = :id;';
+    Q := NewQuery(S3DB);
+    Q.SQL.Text := SQL;
+    Q.ParamByName('fname').AsString := FileName;
+    Q.ParamByName('id').AsInteger := ImageID;
+    Q.ExecSQL;
+    EndQuery(Q);
+
+  finally
+    OutStream.Free;
+    CompStream.Free;
+  end;
+
+  (* DEBUGGING - Validate that what goes in, can come out )
+  CompStream := TMemoryStream.Create;
+  OutStream := TMemoryStream.Create;
+  sql := 'select Filename, UncompressedSize, RawData from ComponentImages where ImageID=:id';
+  q := NewQuery(s3db);
+  q.SQL.Text := sql;
+  q.ParamByName('id').AsInteger := ImageID;
+  q.Open;
+  ImagePath := '';
+  if not q.EOF then begin
+    TBlobField(q.FieldByName('RawData')).SaveToStream(CompStream);
+    CompStream.Position := 0;
+    lWidth := Q.FieldByName('UncompressedSize').AsInteger;
+    // I have a RAM DRIVE, so, change this to whatever path you need
+    ImagePath := 'r:\' + Q.FieldByName('Filename').AsString;
+    q.Next;
+  end;
+  EndQuery(q);
+  if ImagePath <> '' then begin
+    OutStream := DecompressZlib(CompStream, lWidth);
+    OutStream.SaveToFile(ImagePath);
+  end;
+  OutStream.Free;
+  CompStream.Free;
+  //*)
+end;
+
+procedure AssignImageDataToBitmap (const Img: TImageData; Target: TBitmap);
+var
+  Row: integer;
+  Src: pbyte;
+  Dest: pbyte;
+begin
+  Target.SetSize(Img.Width, Img.Height);
+  Target.PixelFormat := pf32bit;
+
+  for Row := 0 to Img.Height - 1 do begin
+    Src := pbyte(Img.Bits) + (Row * Img.Width * 4);      // assuming ifA8R8G8B8
+    Dest := Target.ScanLine[Row];
+    Move(Src^, Dest^, Img.Width * 4);
+  end;
+end;
+
+procedure LoadImageToControl (var Img: TImageData; Target: TImage);
+var
+  Converted: TImageData;
+  Row: integer;
+  Src, Dest: pbyte;
+  Bmp: TBitmap;
+begin
+  Converted := Img;
+
+  // If converted, remember to free later
+  if Img.Format <> ifA8R8G8B8 then begin
+    ConvertImage(Converted, ifA8R8G8B8);
+  end;
+
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(Converted.Width, Converted.Height);
+
+    for Row := 0 to Converted.Height - 1 do begin
+      Src := pbyte(Converted.Bits) + (Row * Converted.Width * 4);
+      Dest := Bmp.ScanLine[Row];
+      Move(Src^, Dest^, Converted.Width * 4);
+    end;
+
+    Target.Picture.Assign(Bmp);
+  finally
+    Bmp.Free;
+    if @Converted <> @Img then begin
+      FreeImage(Converted);
+    end;  // Only free if ConvertImage changed the buffer
+  end;
+end;
+
+procedure ResetImage (var Img: TImageData);
+begin
+  if Img.Bits <> nil then begin
+    FreeImage(Img);
+  end;
+  FillChar(Img, SizeOf(Img), 0); // Always reset afterward
+end;
+
+procedure CenterImageInPanel (Image: TImage; Ratio: float = 0.9);
+var
+  Panel: TPanel;
+  ImgRatio, PanelRatio: double;
+  NewWidth, NewHeight: integer;
+begin
+  if not Assigned(Image) or not Assigned(Image.Picture) or
+    (Image.Picture.Width = 0) or (Image.Picture.Height = 0) then begin
+    Exit;
+  end;
+
+  if not (Image.Parent is TPanel) then begin
+    Exit;
+  end;
+
+  Panel := TPanel(Image.Parent);
+
+  // Calculate aspect ratios
+  ImgRatio := Image.Picture.Width / Image.Picture.Height;
+  PanelRatio := Panel.ClientWidth / Panel.ClientHeight;
+
+  // Scale image dimensions while preserving aspect ratio
+  if ImgRatio > PanelRatio then begin
+    // Fit by width
+    NewWidth := Panel.ClientWidth;
+    NewHeight := Round(NewWidth / ImgRatio);
+  end else begin
+    // Fit by height
+    NewHeight := Panel.ClientHeight;
+    NewWidth := Round(NewHeight * ImgRatio);
+  end;
+
+  NewHeight := trunc(NewHeight * Ratio);
+  NewWidth := trunc(NewWidth * Ratio);
+
+  // Apply size
+  Image.SetBounds(
+    (Panel.ClientWidth - NewWidth) div 2,
+    (Panel.ClientHeight - NewHeight) div 2,
+    NewWidth,
+    NewHeight
+    );
+end;
+
+
+procedure LoadImageBlobIntoControl (var q: TSQLQuery; var ImageControl: TImage);
+var
+  Img: TImageData; // ← new record *each time*
+  CompressedStream, DecompressedStream: TMemoryStream;
+begin
+  CompressedStream := TMemoryStream.Create;
+  DecompressedStream := nil;
+  try
+    TBlobField(q.FieldByName('RawData')).SaveToStream(CompressedStream);
+    CompressedStream.Position := 0;
+
+    DecompressedStream := DecompressZlib(CompressedStream, q.FieldByName('UncompressedSize').AsInteger);
+    DecompressedStream.Position := 0;
+    LoadImageFromStream(DecompressedStream, img);
+    LoadImageToControl(Img, ImageControl); // whatever this is
+    CenterImageInPanel(ImageControl);
+
+  finally
+    DecompressedStream.Free;
+    CompressedStream.Free;
+  end;
+end;
+
+procedure TForm1.ReloadImagesOnScreen;
+const
+  ImageQuery = 'SELECT * FROM ComponentImages WHERE (ComponentType = ''Build List'' AND ComponentID = :BuildID) OR EXISTS ( SELECT 1 FROM BuildComponents WHERE BuildID = :BuildID AND ' +
+    'BuildComponents.Component = ComponentImages.ComponentType AND BuildComponents.ComponentID = ComponentImages.ComponentID ) ORDER BY ComponentType <> ''Build List'', LOWER(ComponentType), ImageID;';
+var
+  BuildID: integer;
+  ComponentType: string;
+  ComponentID: integer;
+  CompsInBld: TSQLQuery;
+  sql: string;
+  Panel: TPanel;
+  Image: TImage;
+  Img: TImageData;
+  CompressedStream, DecompressedStream: TMemoryStream;
+  ImageStream: TMemoryStream;
+  PropX, PropY: integer;
+begin
+  DeleteChildObjects(sbBuildImages);
+  if lbBuildList.ItemIndex > -1 then begin
+    BuildID := O2I(lbBuildList.Items.Objects[lbBuildList.ItemIndex]);
+    CompsInBld := NewQuery(S3DB);
+    sql := ImageQuery;
+    CompsInBld.SQL.Text := ImageQuery;
+    CompsInBld.ParamByName('BuildID').AsInteger := BuildID;
+    CompsInBld.Open;
+    while not CompsInBld.EOF do begin
+      Panel := TPanel.Create(sbBuildImages);
+      Panel.Caption := ' ';
+      Panel.Name := SafeComponentName(CompsInBld.FieldByName('FileName').AsString);
+      Panel.Parent := sbBuildImages;
+      Panel.Align := alLeft;
+      Panel.Left := MaxSmallint - 1;
+      Panel.Width := Panel.Height;
+      //Panel.Repaint;
+
+      Image := TImage.Create(Panel);
+      Image.Parent := Panel;
+      Image.Stretch := True;
+      Image.Name := 'img' + SafeComponentName(Panel.Caption);
+      Image.OnDblClick := @ThumbnailClick;
+      Image.Tag:=CompsInBld.FieldByName('ImageID').AsInteger;
+      Image.PopupMenu:=PopupMenu1;
+
+      LoadImageBlobIntoControl(CompsInBld, Image);
+
+      CompsInBld.Next;
+    end;
+    EndQuery(CompsInBld);
+
+  end;
+  Application.ProcessMessages;
+  for PropX:=0 to sbBuildImages.ComponentCount-1 do begin
+    if sbBuildImages.Components[PropX] is TPanel then begin
+      Panel:=tPanel(sbBuildImages.Components[PropX]);
+      if Panel.Height<>sbBuildImages.ClientHeight then begin
+        Panel.SetBounds(Panel.Left,panel.Top,sbBuildImages.ClientHeight,sbBuildImages.ClientHeight);
+      end;
+    end;
+  end;
+end;
+
+procedure TForm1.mnuLoadImageClick (Sender: TObject);
+var
+  i: integer;
+  ComponentType: string;
+  ComponentID: integer;
+  ListBox: TListBox;
+  CurrentTab: TTabSheet;
+begin
+  OpenPictureDialog1.Options := [ofAllowMultiSelect];
+  OpenPictureDialog1.Filter := 'Common Image Files (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.tif;*.tiff)|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.tif;*.tiff|All Files (*.*)|*.*';
+  if OpenPictureDialog1.Execute then begin
+    CurrentTab := PageControl1.ActivePage;
+    ComponentType := CurrentTab.Caption;
+    if PageControl1.ActivePage = tsBuildSheet then begin
+      ListBox := lbBuildList;
+    end else begin
+      Listbox := tListbox(FindAnyComponent(Form1, 'lb__' + SafeComponentName(ComponentType) + '__List'));
+    end;
+    if assigned(Listbox) then begin
+      ComponentID := o2i(ListBox.Items.Objects[ListBox.ItemIndex]);
+      if ComponentID >= 0 then begin
+        for i := 0 to OpenPictureDialog1.Files.Count - 1 do begin
+          if PageControl1.ActivePage = tsBuildSheet then begin
+            ImportImageForComponent(OpenPictureDialog1.Files[i], 'Build List', ComponentID);
+          end else begin
+            ImportImageForComponent(OpenPictureDialog1.Files[i], SafeComponentName(ComponentType), ComponentID);
+          end;
+        end;
+      end;
+    end;
+    ReloadImagesOnScreen;
   end;
 end;
 
@@ -827,7 +1208,7 @@ begin
   // Duplicates are ignored
 end;
 
-function TForm1.GetBuildIdForComponent(ComponentID: integer; Component: string): integer;
+function TForm1.GetBuildIdForComponent (ComponentID: integer; Component: string): integer;
 (*
 @AI:summary: Retrieves the BuildID that a specific component is assigned to, based on component type and ID.
 @AI:params: ComponentID: The numeric ID of the component in its device table.
@@ -846,13 +1227,14 @@ begin
   q.ParamByName('cid').AsInteger := ComponentID;
   q.Open;
   res := -1;
-  if not q.EOF then
+  if not q.EOF then begin
     res := q.FieldByName('BuildID').AsInteger;
+  end;
   EndQuery(q);
   Result := res;
 end;
 
-procedure TForm1.AssignBuildButtonClick(Sender: TObject);
+procedure TForm1.AssignBuildButtonClick (Sender: TObject);
 (*
 @AI:summary: Toggles a component's assignment to the selected build. Inserts, removes, or moves the component depending on its current association.
 @AI:params: Sender: The button clicked to initiate the toggle.
@@ -862,17 +1244,21 @@ var
   TabShortName, Prefix, BuildName, SQL: string;
   ListBox: TListBox;
   Button: TButton;
-  ComponentID, BuildID, AssignedBuildID: Integer;
-  q:TSQLQuery;
+  ComponentID, BuildID, AssignedBuildID: integer;
+  q: TSQLQuery;
 begin
-  if lbBuildList.ItemIndex = -1 then Exit;
+  if lbBuildList.ItemIndex = -1 then begin
+    Exit;
+  end;
 
   TabShortName := SafeComponentName(PageControl1.ActivePage.Caption);
   Prefix := TabShortName + '__BuildAssign__';
 
   ListBox := TListBox(FindAnyComponent(PageControl1.ActivePage, 'lb__' + TabShortName + '__List'));
   Button := TButton(Sender);
-  if (ListBox = nil) or (ListBox.ItemIndex = -1) then Exit;
+  if (ListBox = nil) or (ListBox.ItemIndex = -1) then begin
+    Exit;
+  end;
 
   ComponentID := O2I(ListBox.Items.Objects[ListBox.ItemIndex]);
   BuildID := O2I(lbBuildList.Items.Objects[lbBuildList.ItemIndex]);
@@ -882,33 +1268,30 @@ begin
   if AssignedBuildID = -1 then begin
     // INSERT new link
     SQL := 'INSERT INTO BuildComponents (BuildID, Component, ComponentID) VALUES (:b, :c, :i)';
-    q:=NewQuery(S3DB);
+    q := NewQuery(S3DB);
     q.SQL.Text := SQL;
     q.ParamByName('b').AsInteger := BuildID;
     q.ParamByName('c').AsString := TabShortName;
     q.ParamByName('i').AsInteger := ComponentID;
     q.ExecSQL;
     EndQuery(q);
-  end
-  else if AssignedBuildID = BuildID then begin
+  end else if AssignedBuildID = BuildID then begin
     // DELETE existing link
     SQL := 'DELETE FROM BuildComponents WHERE BuildID = :b AND Component = :c AND ComponentID = :i';
-    q:=NewQuery(S3DB);
+    q := NewQuery(S3DB);
     q.SQL.Text := SQL;
     q.ParamByName('b').AsInteger := BuildID;
     q.ParamByName('c').AsString := TabShortName;
     q.ParamByName('i').AsInteger := ComponentID;
     q.ExecSQL;
     EndQuery(q);
-  end
-  else begin
+  end else begin
     // Assigned to a different build — confirm move
     if MessageDlg(
       'This component is already assigned to "' + GetBuildNameForID(AssignedBuildID) + '".' + LineEnding +
-      'Move it to "' + BuildName + '"?', mtConfirmation, [mbYes, mbNo], 0) = mrYes then
-    begin
+      'Move it to "' + BuildName + '"?', mtConfirmation, [mbYes, mbNo], 0) = mrYes then begin
       SQL := 'UPDATE BuildComponents SET BuildID = :b WHERE Component = :c AND ComponentID = :i';
-      q:=NewQuery(S3DB);
+      q := NewQuery(S3DB);
       q.SQL.Text := SQL;
       q.ParamByName('b').AsInteger := BuildID;
       q.ParamByName('c').AsString := TabShortName;
@@ -923,8 +1306,13 @@ begin
   UpdateBuildAssignmentStatus(TabShortName);
 end;
 
+procedure TForm1.ThumbnailClick (Sender: TObject);
+begin
+  application.MessageBox('Clickededed', '', MB_OK);
+end;
 
-function TForm1.GetBuildNameForID(ID: integer): string;
+
+function TForm1.GetBuildNameForID (ID: integer): string;
 (*
 @AI:summary: Retrieves the human-readable name of a build given its BuildID.
 @AI:params: ID: The BuildID to look up.
@@ -943,7 +1331,7 @@ begin
   EndQuery(q);
 end;
 
-procedure TForm1.UpdateBuildAssignmentStatus(const TabShortName: string);
+procedure TForm1.UpdateBuildAssignmentStatus (const TabShortName: string);
 (*
 @AI:summary: Updates the status of a build assignment based on the provided tab short name.
 @AI:params: TabShortName: The short name of the tab used to identify the build assignment to be updated.
@@ -954,7 +1342,7 @@ var
   Panel: TPanel;
   LabelStatus: TLabel;
   ButtonAction: TButton;
-  SelectedComponentID, BuildID, AssignedBuildID: Integer;
+  SelectedComponentID, BuildID, AssignedBuildID: integer;
   AssignedBuildName: string;
   Prefix: string;
 begin
@@ -964,8 +1352,12 @@ begin
   LabelStatus := TLabel(FindAnyComponent(PageControl1.ActivePage, SafeComponentName(Prefix + 'Label')));
   ButtonAction := TButton(FindAnyComponent(PageControl1.ActivePage, SafeComponentName(Prefix + 'Button')));
 
-  if (ListBox = nil) or (Panel = nil) or (LabelStatus = nil) or (ButtonAction = nil) then Exit;
-  if ListBox.ItemIndex = -1 then Exit;
+  if (ListBox = nil) or (Panel = nil) or (LabelStatus = nil) or (ButtonAction = nil) then begin
+    Exit;
+  end;
+  if ListBox.ItemIndex = -1 then begin
+    Exit;
+  end;
 
   SelectedComponentID := O2I(ListBox.Items.Objects[ListBox.ItemIndex]);
   BuildID := O2I(lbBuildList.Items.Objects[lbBuildList.ItemIndex]);
@@ -974,10 +1366,11 @@ begin
   AssignedBuildName := GetBuildNameForID(AssignedBuildID);        // Ditto
 
   // Update label
-  if AssignedBuildID = -1 then
-    LabelStatus.Caption := 'Currently assigned to:' + LineEnding + '(Unassigned)'
-  else
+  if AssignedBuildID = -1 then begin
+    LabelStatus.Caption := 'Currently assigned to:' + LineEnding + '(Unassigned)';
+  end else begin
     LabelStatus.Caption := 'Currently assigned to:' + LineEnding + AssignedBuildName;
+  end;
 
   // Update button
   if AssignedBuildID = -1 then begin
@@ -988,7 +1381,6 @@ begin
     ButtonAction.Caption := 'Move from ' + AssignedBuildName + LineEnding + 'to current build';
   end;
 end;
-
 
 procedure TForm1.PageControl1Change (Sender: TObject);
 (*
@@ -1048,7 +1440,7 @@ begin
       Application.MessageBox(PChar('ListBox not found for ' + TableName), 'Error', MB_OK);
     end;
     // Toggle the visibility of the component assignment to build panel
-    tPanel(FindAnyComponent(Form1,SafeComponentName(ShortName+'__BuildAssign__Panel'))).visible:=lbBuildList.ItemIndex>=0;
+    tPanel(FindAnyComponent(Form1, SafeComponentName(ShortName + '__BuildAssign__Panel'))).Visible := lbBuildList.ItemIndex >= 0;
   end;
 end;
 
@@ -1090,7 +1482,7 @@ begin
   end;
 end;
 
-procedure TForm1.CreateBuildAssignmentPanel(Frame: TFrame1; TabShortName: string);
+procedure TForm1.CreateBuildAssignmentPanel (Frame: TFrame1; TabShortName: string);
 (*
 @AI:summary: Adds a right-aligned panel to Frame1 with build assignment label, button, and a memo log.
 @AI:params: Frame: The TFrame1 container to embed the controls into.
@@ -1110,7 +1502,7 @@ begin
   AssignPanel.Name := SafeComponentName(Prefix + 'Panel');
   AssignPanel.Parent := Frame;
   AssignPanel.Align := alRight;
-  AssignPanel.Width := trunc(220*1.5);
+  AssignPanel.Width := trunc(220 * 1.5);
   AssignPanel.BevelOuter := bvNone;
 
   AssignLabel := TLabel.Create(AssignPanel);
@@ -1119,7 +1511,7 @@ begin
   AssignLabel.Align := alTop;
   AssignLabel.Alignment := taRightJustify;
   AssignLabel.Font.Style := [fsBold];
-  AssignLabel.Caption := 'Currently assigned to:'+LineEnding+'(Unassigned)';
+  AssignLabel.Caption := 'Currently assigned to:' + LineEnding + '(Unassigned)';
   AssignLabel.AutoSize := False;
   AssignLabel.Height := 36;
 
@@ -1129,7 +1521,7 @@ begin
   AssignButton.Align := alTop;
   AssignButton.Caption := 'Assign to Build';
   AssignButton.Height := 30;
-  AssignButton.OnClick:=@AssignBuildButtonClick;
+  AssignButton.OnClick := @AssignBuildButtonClick;
 
   AssignMemo := TMemo.Create(AssignPanel);
   AssignMemo.Name := SafeComponentName(Prefix + 'Memo');
@@ -1145,7 +1537,7 @@ begin
 
 end;
 
-procedure tForm1.AddGlobalFieldsToFrame (Frame: TFrame1; ComponentName: string);
+procedure TForm1.AddGlobalFieldsToFrame (Frame: TFrame1; ComponentName: string);
 (*
 @AI:summary: This function likely adds global fields to a specified frame component.
 @AI:params: Frame: The frame to which global fields will be added.
@@ -2077,7 +2469,7 @@ begin
           ListBox := TListBox(FindAnyComponent(TabSheet, 'lb__' + ShortName + '__List'));
           if Assigned(ListBox) then begin
             LoadDataIntoListBox(ListBox, TableName);
-            MatchIndex := ListBox.Items.IndexOf(QRString+'- '+Title);
+            MatchIndex := ListBox.Items.IndexOf(QRString + '- ' + Title);
             if MatchIndex >= 0 then begin
               ListBox.ItemIndex := MatchIndex;
               ListBox.OnClick(ListBox);

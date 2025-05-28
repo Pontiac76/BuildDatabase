@@ -68,3 +68,6 @@ sql_debug.txt
 .vscode/settings.json
 .vscode
 *.old
+
+# Stuff not needed
+images
