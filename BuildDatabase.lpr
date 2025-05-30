@@ -16,10 +16,10 @@ uses
   frmMain,
   DatabaseManager,
   MiscFunctions,
-  frmDebug,
   UIManager,
   TabGrouping,
-  ComponentDetails;
+  ComponentDetails,
+  frmCamera;
 
   {$R *.res}
 
@@ -28,5 +28,6 @@ begin
   Application.Scaled:=True;
   Application.Initialize;
   Application.CreateForm(TForm1, Form1);
+  Application.CreateForm(tCamera,CameraForm);
   Application.Run;
 end.

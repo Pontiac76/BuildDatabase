@@ -72,6 +72,7 @@ type
     procedure imagePopupClick(Sender:TObject);
     procedure lbBuildListClick (Sender: TObject);
     procedure Memo1Exit (Sender: TObject);
+    procedure MenuItem2Click(Sender:TObject);
     procedure mnuLoadImageClick (Sender: TObject);
     procedure mnuResetManifestClick (Sender: TObject);
     procedure mnuAddToBuildManifestClick (Sender: TObject);
@@ -129,8 +130,8 @@ var
 
 implementation
 
-uses IniFiles, SimpleSQLite3, DatabaseManager, MiscFunctions, ComponentDetails, DB,
-  Math, Imaging, ImagingTypes, ImagingClasses, ImagingJPEG, zlib;
+uses IniFiles,SimpleSQLite3,DatabaseManager,MiscFunctions,ComponentDetails,
+  frmCamera,DB,Math,Imaging,ImagingTypes,ImagingClasses,ImagingJPEG,zlib;
 
   {$R *.lfm}
 
@@ -813,6 +814,12 @@ begin
     end;
     Memo1.Modified := False;
   end;
+end;
+
+procedure TForm1.MenuItem2Click(Sender:TObject);
+begin
+  // Keeping this in for now, but chucking this into Git for now so I can return to this later.
+  //CameraForm.ShowModal;
 end;
 
 function CompressZlib (Input: TMemoryStream): TMemoryStream;

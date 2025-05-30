@@ -71,3 +71,6 @@ sql_debug.txt
 
 # Stuff not needed
 images
+
+# Temporary stop on image processing
+dependencies/DSPack

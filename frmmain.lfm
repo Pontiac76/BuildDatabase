@@ -233,6 +233,7 @@ object Form1: TForm1
     object MenuItem2: TMenuItem
       Caption = '&Help'
       RightJustify = True
+      OnClick = MenuItem2Click
       object MenuItem13: TMenuItem
         Caption = 'Help &Contents'
         ShortCut = 112

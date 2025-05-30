@@ -1,0 +1,114 @@
+object tCamera: tCamera
+  Left = 2852
+  Height = 430
+  Top = -583
+  Width = 623
+  Caption = 'frmCamera'
+  ClientHeight = 430
+  ClientWidth = 623
+  OnClose = FormClose
+  OnCreate = FormCreate
+  OnDestroy = FormDestroy
+  OnShow = FormShow
+  Position = poMainFormCenter
+  LCLVersion = '3.4.0.0'
+  object GroupBox1: TGroupBox
+    Left = 0
+    Height = 50
+    Top = 0
+    Width = 623
+    Align = alTop
+    Caption = 'Select Camera'
+    ClientHeight = 30
+    ClientWidth = 619
+    TabOrder = 0
+    object cboCameraList: TComboBox
+      Left = 0
+      Height = 23
+      Top = 0
+      Width = 619
+      Align = alClient
+      ItemHeight = 15
+      ParentColor = True
+      Style = csDropDownList
+      TabOrder = 0
+      OnSelect = cboCameraListSelect
+    end
+  end
+  object Panel1: TPanel
+    Left = 0
+    Height = 380
+    Top = 50
+    Width = 623
+    Align = alClient
+    Caption = 'Panel1'
+    ClientHeight = 380
+    ClientWidth = 623
+    TabOrder = 1
+    object pnlPhotosTaken: TPanel
+      Left = 452
+      Height = 328
+      Top = 1
+      Width = 170
+      Align = alRight
+      BevelInner = bvLowered
+      BevelWidth = 2
+      BorderWidth = 3
+      Caption = 'pnlPhotosTaken'
+      TabOrder = 0
+    end
+    object pnlCommandBox: TPanel
+      Left = 1
+      Height = 50
+      Top = 329
+      Width = 621
+      Align = alBottom
+      BevelInner = bvRaised
+      BevelOuter = bvLowered
+      BevelWidth = 3
+      Caption = 'pnlCommandBox'
+      TabOrder = 1
+    end
+    object Panel2: TPanel
+      Left = 1
+      Height = 328
+      Top = 1
+      Width = 451
+      Align = alClient
+      BevelInner = bvLowered
+      BevelWidth = 3
+      Caption = 'Panel2'
+      ClientHeight = 328
+      ClientWidth = 451
+      TabOrder = 2
+      object imgPreview: TImage
+        Left = 6
+        Height = 316
+        Top = 6
+        Width = 439
+        Align = alClient
+      end
+    end
+  end
+  object tmrGrabTimer: TTimer
+    Enabled = False
+    OnTimer = tmrGrabTimerTimer
+    Left = 485
+    Top = 283
+  end
+  object SampleGrabber: TSampleGrabber
+    MediaType.data = {
+      7669647300001000800000AA00389B717DEB36E44F52CE119F530020AF0BA770
+      FFFFFFFF0000000001000000809F580556C3CE11BF0100AA0055595A00000000
+      000000000000000000000000000000000000000000000000
+    }
+    Left = 116
+    Top = 267
+  end
+  object FilterGraph: TFilterGraph
+    GraphEdit = False
+    LinearVolume = True
+    Left = 47
+    Top = 354
+  end
+end
