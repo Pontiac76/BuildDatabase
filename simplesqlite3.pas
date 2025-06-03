@@ -183,8 +183,11 @@ var
   r: integer;
 begin
   q := NewQuery(DBObj);
-  q.SQL.Text := 'select count(BuildID) BuildCount from BuildList where QRCode=:QRCode';
-  q.Params.ParamValues['QRCode'] := QRCode;
+  // BuildList stores QR strings in the BuildQR column defined in
+  // databasemanager.DefineBuildList. Query that field to avoid a
+  // "QRCode" reference that doesn't exist in the table schema.
+  q.SQL.Text := 'select count(BuildID) BuildCount from BuildList where BuildQR=:BuildQR';
+  q.Params.ParamValues['BuildQR'] := QRCode;
   q.Open;
   r := q.FieldByName('BuildCount').AsInteger;
   EndQuery(q);
