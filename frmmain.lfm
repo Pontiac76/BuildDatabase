@@ -2,10 +2,10 @@ object Form1: TForm1
   Left = 633
   Height = 1028
   Top = -1080
-  Width = 1628
+  Width = 1632
   Caption = 'Form1'
   ClientHeight = 1028
-  ClientWidth = 1628
+  ClientWidth = 1632
   Menu = MainMenu1
   OnCreate = FormCreate
   OnDestroy = FormDestroy
@@ -15,7 +15,7 @@ object Form1: TForm1
     Left = 0
     Height = 1028
     Top = 0
-    Width = 1628
+    Width = 1632
     ActivePage = tsBuildSheet
     Align = alClient
     TabIndex = 0
@@ -24,7 +24,7 @@ object Form1: TForm1
     object tsBuildSheet: TTabSheet
       Caption = 'Build List'
       ClientHeight = 1000
-      ClientWidth = 1620
+      ClientWidth = 1624
       object gbCompList1: TGroupBox
         Left = 0
         Height = 1000
@@ -53,21 +53,21 @@ object Form1: TForm1
         Left = 235
         Height = 1000
         Top = 0
-        Width = 1385
+        Width = 1389
         Align = alClient
         Caption = 'Panel1'
         ClientHeight = 1000
-        ClientWidth = 1385
+        ClientWidth = 1389
         TabOrder = 1
-        object Panel2: TPanel
+        object ImageContainer: TPanel
           Left = 1
           Height = 149
           Top = 850
-          Width = 1383
+          Width = 1387
           Align = alBottom
           Caption = 'To Be: Image Viewing Area'
           ClientHeight = 149
-          ClientWidth = 1383
+          ClientWidth = 1387
           ParentBackground = False
           ParentColor = False
           TabOrder = 0
@@ -75,7 +75,7 @@ object Form1: TForm1
             Left = 1
             Height = 147
             Top = 1
-            Width = 1381
+            Width = 1385
             HorzScrollBar.Increment = 1
             HorzScrollBar.Page = 1
             HorzScrollBar.Smooth = True
@@ -122,7 +122,7 @@ object Form1: TForm1
           Left = 316
           Height = 849
           Top = 1
-          Width = 1068
+          Width = 1072
           ActivePage = TabSheet1
           Align = alClient
           TabIndex = 0
@@ -130,12 +130,12 @@ object Form1: TForm1
           object TabSheet1: TTabSheet
             Caption = 'Build Notes'
             ClientHeight = 821
-            ClientWidth = 1060
+            ClientWidth = 1064
             object Memo1: TMemo
               Left = 0
               Height = 801
               Top = 20
-              Width = 1060
+              Width = 1064
               Align = alClient
               ParentColor = True
               TabOrder = 0
@@ -145,10 +145,20 @@ object Form1: TForm1
               Left = 0
               Height = 20
               Top = 0
-              Width = 1060
+              Width = 1064
               Align = alTop
               Caption = 'Notes about Build'
               TabOrder = 1
+            end
+            object Memo2: TMemo
+              Left = 89
+              Height = 608
+              Top = 122
+              Width = 861
+              Lines.Strings = (
+                'Memo2'
+              )
+              TabOrder = 2
             end
           end
           object TabSheet2: TTabSheet
@@ -173,29 +183,34 @@ object Form1: TForm1
   object MainMenu1: TMainMenu
     Left = 40
     Top = 60
-    object MenuItem1: TMenuItem
-      Caption = '&Edit'
-      object MenuItem15: TMenuItem
-        Caption = 'Select &All'
-        ShortCut = 16449
+    object MenuItem5: TMenuItem
+      Caption = '&File'
+      object MenuItem7: TMenuItem
+        Caption = '&Attach Image(s)...'
+        OnClick = mnuLoadImageClick
       end
-      object MenuItem16: TMenuItem
-        Caption = 'C&ut'
-        ShortCut = 16472
-      end
-      object MenuItem17: TMenuItem
-        Caption = 'C&opy'
-        ShortCut = 16451
-      end
-      object MenuItem18: TMenuItem
-        Caption = 'P&aste'
+      object mnuPasteImage: TMenuItem
+        Caption = '&Paste Image...'
         ShortCut = 16470
+        OnClick = mnuPasteImageClick
       end
-      object MenuItem20: TMenuItem
+      object MenuItem11: TMenuItem
         Caption = '-'
       end
-      object MenuItem21: TMenuItem
-        Caption = 'F&ind'
+      object MenuItem12: TMenuItem
+        Caption = '&Print'
+        Enabled = False
+      end
+      object MenuItem27: TMenuItem
+        Caption = 'P&rint Setup ...'
+        Enabled = False
+      end
+      object MenuItem28: TMenuItem
+        Caption = '-'
+      end
+      object mnuExit: TMenuItem
+        Caption = 'E&xit'
+        OnClick = mnuExitClick
       end
     end
     object mnuBuildList: TMenuItem
@@ -225,10 +240,6 @@ object Form1: TForm1
         ShortCut = 116
         OnClick = MenuItem8Click
       end
-    end
-    object mnuLoadImage: TMenuItem
-      Caption = 'mnuLoadImage'
-      OnClick = mnuLoadImageClick
     end
     object MenuItem2: TMenuItem
       Caption = '&Help'

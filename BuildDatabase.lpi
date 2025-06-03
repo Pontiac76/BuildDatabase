@@ -26,6 +26,12 @@
     </RunParams>
     <RequiredPackages>
       <Item>
+        <PackageName Value="richmemo_design"/>
+      </Item>
+      <Item>
+        <PackageName Value="richmemopackage"/>
+      </Item>
+      <Item>
         <PackageName Value="pl_Win_DSPack"/>
       </Item>
       <Item>
@@ -114,6 +120,11 @@
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="frmCamera"/>
       </Unit>
+      <Unit>
+        <Filename Value="..\..\Global Units\SQLUnits\ustreamtodb.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="uStreamToDB"/>
+      </Unit>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -125,7 +136,7 @@
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir);..\..\forks\imaginglib\Source"/>
       <Libraries Value="..\..\forks\imaginglib\Extensions\LibTiff\Compiled"/>
-      <OtherUnitFiles Value="..\..\forks\imaginglib\Source;..\..\forks\imaginglib\Source\ZLib;..\..\forks\imaginglib\Extensions;..\..\forks\imaginglib\Extensions\LibTiff;dependencies\DSPack"/>
+      <OtherUnitFiles Value="..\..\forks\imaginglib\Source;..\..\forks\imaginglib\Source\ZLib;..\..\forks\imaginglib\Extensions;..\..\forks\imaginglib\Extensions\LibTiff;dependencies\DSPack;..\..\Global Units\SQLUnits"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Linking>

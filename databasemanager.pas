@@ -399,17 +399,6 @@ begin
   end;
 end;
 
-function fTableList: string;
-(*
-@AI:summary: This function generates and returns the list of tables belonging to the database connection.
-@AI:params: None.
-@AI:returns: A string that represents the table list.
-*)
-begin
-  //  s3db.GetTableNames(slTableList);
-  //  Result := slTableList.Text;
-end;
-
 procedure MergeSectionWithGlobal (Ini: TIniFile; SectionName: string; var MergedFields: TStringList);
 (*
 @AI:summary: Merges specified section fields from a global configuration into a provided string list.
@@ -463,10 +452,10 @@ procedure DefineBuildList;
 @AI:Note: DefineBuildList is not dynamically created or managed by the structure.ini file.  This just ensures the table exists at all.
 *)
 begin
-  if not TableExists(S3DB,'BuildList') then begin
-      dbExec('Drop Index if exists [idxBuildQR]');
-      dbExec('CREATE TABLE [BuildList]([BuildID] INTEGER PRIMARY KEY ASC AUTOINCREMENT,[BuildQR] TEXT UNIQUE,[BuildName] TEXT,UNIQUE([BuildQR]) ON CONFLICT FAIL);');
-      dbExec('CREATE INDEX [idxBuildQR] ON [BuildList]([BuildQR] COLLATE [NOCASE] ASC);');
+  if not TableExists(S3DB, 'BuildList') then begin
+    dbExec('Drop Index if exists [idxBuildQR]');
+    dbExec('CREATE TABLE [BuildList]([BuildID] INTEGER PRIMARY KEY ASC AUTOINCREMENT,[BuildQR] TEXT UNIQUE,[BuildName] TEXT,UNIQUE([BuildQR]) ON CONFLICT FAIL);');
+    dbExec('CREATE INDEX [idxBuildQR] ON [BuildList]([BuildQR] COLLATE [NOCASE] ASC);');
   end;
 end;
 
@@ -477,7 +466,7 @@ procedure DefineBuildComponents;
 @AI:returns: None.
 *)
 begin
-  if not TableExists(s3db,'BuildComponents') then begin
+  if not TableExists(s3db, 'BuildComponents') then begin
     dbExec('drop index if exists [idxBuildComponents]');
     dbExec('CREATE TABLE [BuildComponents]([BuildID] INTEGER,[Component] TEXT NOT NULL,[ComponentID] INTEGER);');
     dbExec('CREATE UNIQUE INDEX [idxBuildComponents] ON [BuildComponents](BuildID, Component, ComponentID);');
@@ -486,7 +475,7 @@ end;
 
 procedure DefineComponentImages;
 begin
-  if not TableExists(s3db,'ComponentImages') then begin
+  if not TableExists(s3db, 'ComponentImages') then begin
     dbExec('Drop Index if exists idxComponentImages;');
     dbExec('CREATE TABLE [ComponentImages]([ImageID] INTEGER PRIMARY KEY AUTOINCREMENT,[ComponentType] TEXT NOT NULL,[ComponentID] INTEGER NOT NULL,[FileName] TEXT NOT NULL,[CRC32] TEXT NOT NULL,[Format] TEXT NOT NULL,[Width] INTEGER,[Height] INTEGER,[OriginalFileName] TEXT,[LastCRCCheck] DATETIME,[UncompressedSize] INTEGER NOT NULL, [RawData] BLOB NOT NULL);');
     dbExec('CREATE INDEX [idxComponentImages] ON [ComponentImages]([ComponentType] ASC,[ComponentID] ASC);');

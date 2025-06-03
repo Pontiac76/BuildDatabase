@@ -4,6 +4,8 @@
 - It interacts with a SQLite database to store and retrieve component details, including QR codes and titles, and dynamically generates UI elements based on the data structure defined in an INI file.
 - The unit also handles user input validation and updates the UI accordingly based on user actions.
 *)
+
+// TODO: Look at the age of structure.ini and write it to the database.  If the timestamps don't change, we don't need to do database validation and we can assume it "just works".  If date doesn't exist in the DB, do the validation.
 unit frmMain;
 {$mode objfpc}{$H+}
 
@@ -11,8 +13,8 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, Menus, ComCtrls, StdCtrls,
-  ExtCtrls, LCLType, Buttons, ButtonPanel, ExtDlgs,
-  RegExpr, SQLite3Conn, SQLite3, SQLDB, TabGrouping;
+  ExtCtrls, LCLType, Buttons, ExtDlgs, RTTICtrls, SynEdit,
+  RegExpr, SQLite3Conn, SQLite3, SQLDB, TabGrouping, ActnList;
 
 type
   TQRType = (QRCode, QRURL, QRPhoneNumber);
@@ -27,32 +29,33 @@ type
     lbBuildList: TListBox;
     MainMenu1: TMainMenu;
     Memo1: TMemo;
-    MenuItem1: TMenuItem;
+    Memo2: TMemo;
+    mnuPasteImage: TMenuItem;
+    MenuItem11: TMenuItem;
+    MenuItem12: TMenuItem;
     MenuItem13: TMenuItem;
     MenuItem14: TMenuItem;
-    MenuItem15: TMenuItem;
-    MenuItem16: TMenuItem;
-    MenuItem17: TMenuItem;
-    MenuItem18: TMenuItem;
     MenuItem19: TMenuItem;
     MenuItem2: TMenuItem;
-    MenuItem20: TMenuItem;
-    MenuItem21: TMenuItem;
     MenuItem22: TMenuItem;
     MenuItem23: TMenuItem;
     MenuItem24: TMenuItem;
     MenuItem25: TMenuItem;
     MenuItem26: TMenuItem;
-    imagePopup:TMenuItem;
-    mnuLoadImage: TMenuItem;
+    imagePopup: TMenuItem;
+    MenuItem27: TMenuItem;
+    MenuItem28: TMenuItem;
+    mnuExit: TMenuItem;
+    MenuItem5: TMenuItem;
+    MenuItem7: TMenuItem;
     mnuResetManifest: TMenuItem;
     mnuAddToBuildManifest: TMenuItem;
     OpenPictureDialog1: TOpenPictureDialog;
     PageControl2: TPageControl;
     Panel1: TPanel;
-    Panel2: TPanel;
+    ImageContainer: TPanel;
     Panel3: TPanel;
-    PopupMenu1:TPopupMenu;
+    PopupMenu1: TPopupMenu;
     sbSystemBuildSpecs: TScrollBox;
     sbBuildImages: TScrollBox;
     Separator2: TMenuItem;
@@ -66,14 +69,18 @@ type
     TabSheet1: TTabSheet;
     TabSheet2: TTabSheet;
     tsBuildSheet: TTabSheet;
+
     procedure ApplicationProperties1Idle (Sender: TObject; var Done: boolean);
     procedure FormCreate (Sender: TObject);
     procedure FormDestroy (Sender: TObject);
-    procedure imagePopupClick(Sender:TObject);
+    procedure imagePopupClick (Sender: TObject);
     procedure lbBuildListClick (Sender: TObject);
     procedure Memo1Exit (Sender: TObject);
-    procedure MenuItem2Click(Sender:TObject);
+    procedure MenuItem4Click (Sender: TObject);
+    procedure mnuExitClick (Sender: TObject);
+    procedure MenuItem2Click (Sender: TObject);
     procedure mnuLoadImageClick (Sender: TObject);
+    procedure mnuPasteImageClick (Sender: TObject);
     procedure mnuResetManifestClick (Sender: TObject);
     procedure mnuAddToBuildManifestClick (Sender: TObject);
     procedure MenuItem8Click (Sender: TObject);
@@ -119,6 +126,10 @@ type
     // Image dealings
     procedure ImportImageForComponent (ImagePath: string; ComponentType: string; ComponentID: integer);
     procedure ReloadImagesOnScreen;
+    function ConvertBMPClipboardToOptimalFormat (out FileFormat: string): TMemoryStream;
+    procedure SaveStreamToDatabase (InStream: tMemoryStream; Ext: string);
+    function GetImageDimensions (Stream: TMemoryStream): TPoint;
+    function ConvertToSupportedImage (out Stream: tMemoryStream;out ImgFmt:string): boolean;
   public
     function GetBuildIdForComponent (ComponentID: integer; Component: string): integer;
     function GetBuildNameForID (ID: integer): string;
@@ -130,8 +141,10 @@ var
 
 implementation
 
-uses IniFiles,SimpleSQLite3,DatabaseManager,MiscFunctions,ComponentDetails,
-  frmCamera,DB,Math,Imaging,ImagingTypes,ImagingClasses,ImagingJPEG,zlib;
+uses IniFiles, SimpleSQLite3, DatabaseManager, MiscFunctions, ComponentDetails,
+  Clipbrd, uStreamToDB, DB, Math, Imaging, ImagingTypes, ImagingClasses, ImagingJPEG,
+  zlib,
+  FPImage, FPReadBMP, FPWriteJPEG, FPWritePNG;
 
   {$R *.lfm}
 
@@ -735,11 +748,29 @@ procedure TForm1.ApplicationProperties1Idle (Sender: TObject; var Done: boolean)
 @AI:params: Done: A boolean variable that indicates whether the idle processing is complete or if further processing is needed.
 @AI:returns:
 *)
+var
+  lb: TListBox;
+  IsBuildSheet: boolean;
+  HasImage: boolean;
+  HasSelection: boolean;
 begin
   Memo1.Enabled := lbBuildList.ItemIndex <> -1;
   if (lbBuildList.ItemIndex = -1) and (Memo1.Text <> '') then begin
     Memo1.Text := '';
   end;
+
+  lb := TListBox(FindAnyComponent(PageControl1.ActivePage, 'lb__' + SafeComponentName(PageControl1.ActivePage.Caption) + '__list'));
+  IsBuildSheet := PageControl1.ActivePage = tsBuildSheet;
+  HasImage := Clipboard.HasFormat(CF_BITMAP);
+
+  if IsBuildSheet then begin
+    HasSelection := lbBuildList.ItemIndex <> -1;
+  end else begin
+    HasSelection := Assigned(lb) and (lb.ItemIndex <> -1);
+  end;
+
+
+  mnuPasteImage.Enabled := HasImage and HasSelection;
 end;
 
 procedure TForm1.FormDestroy (Sender: TObject);
@@ -758,16 +789,16 @@ begin
   CleanupDynamicMenus;
 end;
 
-procedure TForm1.imagePopupClick(Sender:TObject);
+procedure TForm1.imagePopupClick (Sender: TObject);
 var
-  ImageID:integer;
-  q:TSQLQuery;
+  ImageID: integer;
+  q: TSQLQuery;
 begin
-  if Application.MessageBox('Are you sure you wish to delete this image?','Delete Image',MB_YESNO+MB_ICONQUESTION)=ID_YES then begin
-    ImageID:=TImage(PopupMenu1.PopupComponent).Tag;
-    q:=NewQuery(s3db);
-    q.SQL.Text:='delete from ComponentImages where ImageID=:ImageID';
-    q.ParamByName('ImageID').AsInteger:=ImageID;
+  if Application.MessageBox('Are you sure you wish to delete this image?', 'Delete Image', MB_YESNO + MB_ICONQUESTION) = ID_YES then begin
+    ImageID := TImage(PopupMenu1.PopupComponent).Tag;
+    q := NewQuery(s3db);
+    q.SQL.Text := 'delete from ComponentImages where ImageID=:ImageID';
+    q.ParamByName('ImageID').AsInteger := ImageID;
     q.ExecSQL;
     EndQuery(q);
     ReloadImagesOnScreen;
@@ -783,8 +814,6 @@ procedure TForm1.lbBuildListClick (Sender: TObject);
 @AI:params: Sender: The object that triggered the event, typically the list box itself.
 @AI:returns:
 *)
-var
-  QRForBuild: string;
 begin
   sbSystemBuildSpecs.BeginUpdateBounds;
   DeleteChildObjects(TComponent(sbSystemBuildSpecs));
@@ -816,79 +845,43 @@ begin
   end;
 end;
 
-procedure TForm1.MenuItem2Click(Sender:TObject);
+procedure TForm1.MenuItem4Click (Sender: TObject);
+begin
+
+end;
+
+procedure TForm1.mnuExitClick (Sender: TObject);
+begin
+  Application.Terminate;
+end;
+
+procedure TForm1.MenuItem2Click (Sender: TObject);
 begin
   // Keeping this in for now, but chucking this into Git for now so I can return to this later.
   //CameraForm.ShowModal;
 end;
 
-function CompressZlib (Input: TMemoryStream): TMemoryStream;
-var
-  SrcLen, DstLen: uLongf;
-  DestBuf: pBytef;
-  Status: integer;
-begin
-  SrcLen := Input.Size;
-  DstLen := SrcLen + (SrcLen div 10) + 12;
-
-  GetMem(DestBuf, DstLen);
-
-  // ✳️ DstLen is passed as pointer
-  Status := compress(DestBuf, @DstLen, pBytef(Input.Memory), SrcLen);
-  if Status <> Z_OK then begin
-    raise Exception.CreateFmt('Compression failed: %d', [Status]);
-  end;
-
-  Result := TMemoryStream.Create;
-  Result.WriteBuffer(DestBuf^, DstLen);
-  Result.Position := 0;
-
-  FreeMem(DestBuf);
-end;
-
-function DecompressZlib (Input: TMemoryStream; ExpectedSize: uLongf): TMemoryStream;
-var
-  SrcLen, DstLen: uLongf;
-  DestBuf: pBytef;
-  Status: integer;
-begin
-  SrcLen := Input.Size;
-  DstLen := ExpectedSize;
-
-  GetMem(DestBuf, DstLen);
-
-  Status := uncompress(DestBuf, @DstLen, pBytef(Input.Memory), SrcLen);
-  if Status <> Z_OK then begin
-    raise Exception.CreateFmt('Decompression failed: %d', [Status]);
-  end;
-
-  Result := TMemoryStream.Create;
-  Result.WriteBuffer(DestBuf^, DstLen);
-  Result.Position := 0;
-
-  FreeMem(DestBuf);
-end;
 
 procedure TForm1.ImportImageForComponent (ImagePath: string; ComponentType: string; ComponentID: integer);
 var
   Img: TImageData;
   OutStream: TMemoryStream;
-  CompStream: TMemoryStream;
-  CRC32: string;
+  //  CompStream: TMemoryStream;
+  //  CRC32: string;
   SQL: string;
   Q: TSQLQuery;
   ImageID: integer;
   FileName: string;
   lWidth, lHeight: integer;
+  WhatIKnow: tWhatINeedToKnow;
 begin
-  // Load & resize
+  // Load image from disk
   if not LoadImageFromFile(ImagePath, Img) then begin
     raise Exception.Create('Failed to load image: ' + ImagePath);
   end;
-  OutStream := TMemoryStream.Create;
-  OutStream.LoadFromFile(ImagePath);
-  OutStream.Free;
-  ResizeImageMax(Img, 1024, 1024); // Maintain aspect ratio, no upscale
+
+  // Resize the image to maintain aspect ratio
+  ResizeImageMax(Img, 1024, 1024);
   lWidth := Img.Width;
   lHeight := Img.Height;
 
@@ -898,27 +891,19 @@ begin
     SaveImageToStream('jpg', OutStream, Img);
     OutStream.Position := 0;
 
-    // Compress the data
-    CompStream := CompressZlib(OutStream);
-    // Generate CRC32
-    CRC32 := CalcCRC32Hex(CompStream);  // You'll get this helper too
-    CompStream.Position := 0;
-
     // Insert placeholder to get ImageID
-    SQL := 'INSERT or replace INTO ComponentImages (ComponentType, ComponentID, FileName, CRC32, Format, Width, Height, OriginalFileName, UncompressedSize, RawData) ' +
-      'VALUES (:ctype, :cid, :fname, :crc, :fmt, :w, :h, :oname, :us, :rd);';
+    SQL := 'INSERT or replace INTO ComponentImages (ComponentType, ComponentID, FileName, Format, Width, Height, OriginalFileName) ' +
+      'VALUES (:ctype, :cid, :fname, :fmt, :w, :h, :oname);';
     Q := NewQuery(S3DB);
     Q.SQL.Text := SQL;
     Q.ParamByName('ctype').AsString := ComponentType;
     Q.ParamByName('cid').AsInteger := ComponentID;
     Q.ParamByName('fname').AsString := ''; // will update after we get ID
-    Q.ParamByName('crc').AsString := CRC32;
     Q.ParamByName('fmt').AsString := 'JPEG';
     Q.ParamByName('w').AsInteger := lWidth;
     Q.ParamByName('h').AsInteger := lHeight;
     Q.ParamByName('oname').AsString := ExtractFileName(ImagePath);
-    Q.ParamByName('us').AsInteger := OutStream.Size;
-    Q.ParamByName('rd').LoadFromStream(CompStream, ftBlob);
+    //Q.ParamByName('rd').LoadFromStream(CompStream, ftBlob);
     Q.ExecSQL;
 
     // Get ImageID
@@ -926,6 +911,18 @@ begin
     Q.Open;
     ImageID := Q.FieldByName('ImageID').AsInteger;
     EndQuery(Q);
+
+    WhatIKnow := tWhatINeedToKnow.Create;
+    with WhatIKnow do begin
+      Database := S3DB;
+      FieldForBlob := 'RawData';
+      FieldForID := 'ImageID';
+      TableToWorkWith := 'ComponentImages';
+      RecordID := ImageID;
+      CompressedContent := True;
+      StreamToDB(WhatIKnow, OutStream);
+    end;
+    WhatIKnow.Free;
 
     // Build final name
     FileName := Format('%s_%d_%d.jpg', [ComponentType, ComponentID, ImageID]);
@@ -941,7 +938,6 @@ begin
 
   finally
     OutStream.Free;
-    CompStream.Free;
   end;
 
   (* DEBUGGING - Validate that what goes in, can come out )
@@ -1074,33 +1070,86 @@ begin
 end;
 
 
+//procedure LoadImageBlobIntoControl (var q: TSQLQuery; var ImageControl: TImage);
+//var
+//  Img: TImageData; // ← new record *each time*
+//  CompressedStream, DecompressedStream: TMemoryStream;
+//begin
+//  CompressedStream := TMemoryStream.Create;
+//  DecompressedStream := nil;
+//  try
+//    TBlobField(q.FieldByName('RawData')).SaveToStream(CompressedStream);
+//    CompressedStream.Position := 0;
+//
+//    DecompressedStream := DecompressZlib(CompressedStream, q.FieldByName('UncompressedSize').AsInteger);
+//    DecompressedStream.Position := 0;
+//    LoadImageFromStream(DecompressedStream, img);
+//    LoadImageToControl(Img, ImageControl); // whatever this is
+//    CenterImageInPanel(ImageControl);
+//
+//  finally
+//    DecompressedStream.Free;
+//    CompressedStream.Free;
+//  end;
+//end;
+
+
 procedure LoadImageBlobIntoControl (var q: TSQLQuery; var ImageControl: TImage);
 var
-  Img: TImageData; // ← new record *each time*
-  CompressedStream, DecompressedStream: TMemoryStream;
+  CompressedStream, TrimmedStream, DecompressedStream: TMemoryStream;
+  Img: TImageData;
+  OriginalSize: QWord;
 begin
   CompressedStream := TMemoryStream.Create;
+  TrimmedStream := nil;
   DecompressedStream := nil;
+
   try
     TBlobField(q.FieldByName('RawData')).SaveToStream(CompressedStream);
     CompressedStream.Position := 0;
+    CompressedStream.SaveToFile('r:\Compressed' + q.FieldByName('ImageID').AsString + '.dat');
 
-    DecompressedStream := DecompressZlib(CompressedStream, q.FieldByName('UncompressedSize').AsInteger);
-    DecompressedStream.Position := 0;
-    LoadImageFromStream(DecompressedStream, img);
-    LoadImageToControl(Img, ImageControl); // whatever this is
-    CenterImageInPanel(ImageControl);
+    if CompressedStream.Size > SizeOf(QWord) then begin
+      // Read footer
+      CompressedStream.Position := CompressedStream.Size - SizeOf(QWord);
+      OriginalSize := CompressedStream.ReadQWord;
+
+      // Extract compressed body
+      TrimmedStream := TMemoryStream.Create;
+      CompressedStream.Position := 0;
+      TrimmedStream.LoadFromStream(CompressedStream);
+      //      TrimmedStream.CopyFrom(CompressedStream, CompressedStream.Size - SizeOf(QWord));
+      TrimmedStream.Position := 0;
+
+      // Decompress
+      DecompressedStream := DecompressZlib(TrimmedStream, OriginalSize);
+      DecompressedStream.SaveToFile('R:\Test' + IntToStr(q.FieldByName('ImageID').AsInteger) + '.jpg');
+    end else begin
+      DecompressedStream := TMemoryStream.Create;
+    end; // Empty fallback
+
+    // Validate output
+    if DecompressedStream.Size > 0 then begin
+      DecompressedStream.Position := 0;
+      LoadImageFromStream(DecompressedStream, Img);
+      DecompressedStream.Position := 0;
+      LoadImageToControl(Img, ImageControl);
+      CenterImageInPanel(ImageControl);
+    end;
 
   finally
-    DecompressedStream.Free;
     CompressedStream.Free;
+    TrimmedStream.Free;
+    DecompressedStream.Free;
   end;
 end;
 
+
 procedure TForm1.ReloadImagesOnScreen;
 const
-  ImageQuery = 'SELECT * FROM ComponentImages WHERE (ComponentType = ''Build List'' AND ComponentID = :BuildID) OR EXISTS ( SELECT 1 FROM BuildComponents WHERE BuildID = :BuildID AND ' +
+  BuildImageQuery = 'SELECT * FROM ComponentImages WHERE (ComponentType = ''Build List'' AND ComponentID = :BuildID) OR EXISTS ( SELECT 1 FROM BuildComponents WHERE BuildID = :BuildID AND ' +
     'BuildComponents.Component = ComponentImages.ComponentType AND BuildComponents.ComponentID = ComponentImages.ComponentID ) ORDER BY ComponentType <> ''Build List'', LOWER(ComponentType), ImageID;';
+  ComponentImageQuery = 'select * from ComponentImages where ComponentType=:ComponentType and ComponentID=:ComponentID';
 var
   BuildID: integer;
   ComponentType: string;
@@ -1113,14 +1162,26 @@ var
   CompressedStream, DecompressedStream: TMemoryStream;
   ImageStream: TMemoryStream;
   PropX, PropY: integer;
+  ActiveLB: TListBox;
 begin
   DeleteChildObjects(sbBuildImages);
-  if lbBuildList.ItemIndex > -1 then begin
-    BuildID := O2I(lbBuildList.Items.Objects[lbBuildList.ItemIndex]);
+  if PageControl1.ActivePage = tsBuildSheet then begin
+    ActiveLB := lbBuildList;
+    sql := BuildImageQuery;
+  end else begin
+    ActiveLB := tListbox(FindAnyComponent(PageControl1.ActivePage, 'lb__' + SafeComponentName(PageControl1.ActivePage.Caption) + '__List'));
+    sql := ComponentImageQuery;
+  end;
+  if ActiveLB.ItemIndex > -1 then begin
+    BuildID := O2I(ActiveLB.Items.Objects[ActiveLB.ItemIndex]);
     CompsInBld := NewQuery(S3DB);
-    sql := ImageQuery;
-    CompsInBld.SQL.Text := ImageQuery;
-    CompsInBld.ParamByName('BuildID').AsInteger := BuildID;
+    CompsInBld.SQL.Text := sql;
+    if ActiveLB = lbBuildList then begin
+      CompsInBld.ParamByName('BuildID').AsInteger := BuildID;
+    end else begin
+      CompsInBld.ParamByName('ComponentType').AsString := SafeComponentName(PageControl1.ActivePage.Caption);
+      CompsInBld.ParamByName('ComponentID').AsInteger := BuildID; // Recycling -- This is to be thought of as the "ComponentID" as in the database table.
+    end;
     CompsInBld.Open;
     while not CompsInBld.EOF do begin
       Panel := TPanel.Create(sbBuildImages);
@@ -1137,8 +1198,8 @@ begin
       Image.Stretch := True;
       Image.Name := 'img' + SafeComponentName(Panel.Caption);
       Image.OnDblClick := @ThumbnailClick;
-      Image.Tag:=CompsInBld.FieldByName('ImageID').AsInteger;
-      Image.PopupMenu:=PopupMenu1;
+      Image.Tag := CompsInBld.FieldByName('ImageID').AsInteger;
+      Image.PopupMenu := PopupMenu1;
 
       LoadImageBlobIntoControl(CompsInBld, Image);
 
@@ -1148,11 +1209,11 @@ begin
 
   end;
   Application.ProcessMessages;
-  for PropX:=0 to sbBuildImages.ComponentCount-1 do begin
+  for PropX := 0 to sbBuildImages.ComponentCount - 1 do begin
     if sbBuildImages.Components[PropX] is TPanel then begin
-      Panel:=tPanel(sbBuildImages.Components[PropX]);
-      if Panel.Height<>sbBuildImages.ClientHeight then begin
-        Panel.SetBounds(Panel.Left,panel.Top,sbBuildImages.ClientHeight,sbBuildImages.ClientHeight);
+      Panel := tPanel(sbBuildImages.Components[PropX]);
+      if Panel.Height <> sbBuildImages.ClientHeight then begin
+        Panel.SetBounds(Panel.Left, panel.Top, sbBuildImages.ClientHeight, sbBuildImages.ClientHeight);
       end;
     end;
   end;
@@ -1190,6 +1251,195 @@ begin
     end;
     ReloadImagesOnScreen;
   end;
+end;
+
+procedure DumpImageBlobToDisk (ImageID: integer);
+var
+  info: TWhatINeedToKnow;
+  Stream: TMemoryStream;
+begin
+  info := TWhatINeedToKnow.Create;
+  Stream := TMemoryStream.Create;
+
+  try
+    info.Database := s3db;  // Replace with your active TSQLite3Connection
+    info.TableToWorkWith := 'ComponentImages';
+    info.FieldForBlob := 'RawData';
+    info.FieldForID := 'ImageID';
+    info.RecordID := ImageID;
+    info.CompressedContent := True;  // Make sure this matches what was used on write
+
+    DbToStream(info, Stream);
+    Stream.Position := 0;
+    Stream.SaveToFile('R:\Test.jpg');
+
+    Application.MessageBox('Image written to R:\Test.jpg', 'Export OK', MB_OK);
+  finally
+    Stream.Free;
+    info.Free;
+  end;
+end;
+
+function TForm1.ConvertBMPClipboardToOptimalFormat (out FileFormat: string): TMemoryStream;
+var
+  bmp: TBitmap;
+  intfImg: TFPMemoryImage;
+  x, y: integer;
+  reader: TFPReaderBMP;
+  writerJPEG: TFPWriterJPEG;
+  writerPNG: TFPWriterPNG;
+  jpegStream, pngStream: TMemoryStream;
+begin
+  bmp := TBitmap.Create;
+  try
+    Clipboard.AssignTo(bmp);
+
+    // Convert to FCL image
+    intfImg := TFPMemoryImage.Create(bmp.Width, bmp.Height);
+    reader := TFPReaderBMP.Create;
+    try
+      // Assign bitmap to interface image
+      intfImg.Assign(bmp);
+
+
+      // Prefer JPEG if no alpha is present
+      writerJPEG := TFPWriterJPEG.Create;
+      jpegStream := TMemoryStream.Create;
+      try
+        writerJPEG.CompressionQuality := 85; // Tunable
+        intfImg.SaveToStream(jpegStream, writerJPEG);
+        jpegStream.Position := 0;
+        Result := jpegStream;
+      finally
+        writerJPEG.Free;
+        FileFormat := 'JPEG';
+        // jpegStream is returned
+      end;
+    finally
+      reader.Free;
+      intfImg.Free;
+    end;
+  finally
+    bmp.Free;
+  end;
+end;
+
+function GetImageDimensions (Stream: TMemoryStream): TPoint;
+var
+  pic: TPicture;
+begin
+  Result := Point(0, 0); // fallback
+  pic := TPicture.Create;
+  try
+    pic.LoadFromStream(Stream);
+    Result := Point(pic.Width, pic.Height);
+  finally
+    pic.Free;
+  end;
+end;
+
+procedure TForm1.SaveStreamToDatabase (InStream: tMemoryStream; Ext: string);
+begin
+  InStream.SaveToFile('r:\Test.' + Ext);
+end;
+
+function TForm1.GetImageDimensions (Stream: TMemoryStream): TPoint;
+var
+  pic: TPicture;
+begin
+  Result := Point(0, 0); // fallback
+  pic := TPicture.Create;
+  try
+    pic.LoadFromStream(Stream);
+    Result := Point(pic.Width, pic.Height);
+  finally
+    pic.Free;
+  end;
+end;
+
+
+function tForm1.ConvertToSupportedImage (out Stream: tMemoryStream;out ImgFmt:string): boolean;
+begin
+  // Convert the clipboard to PNG or JPEG.
+  Result := True;
+  if Clipboard.HasFormatName('PNG') then begin
+    stream := TMemoryStream.Create;
+    Clipboard.GetFormat(Clipboard.FindFormatID('PNG'), stream);
+    stream.Position := 0;
+    ImgFmt := 'PNG';
+  end else if Clipboard.HasFormatName('image/bmp') then begin
+    stream := ConvertBMPClipboardToOptimalFormat(ImgFmt);
+    Stream.Position := 0;
+  end else begin
+    ShowMessage('Unsupported clipboard image format.');
+    Result := False;
+  end;
+end;
+
+procedure TForm1.mnuPasteImageClick (Sender: TObject);
+var
+  ActiveLB: TListBox;
+  ActivePage: TTabSheet;
+  bmp: TBitmap;
+  BuildSheetValidSelect, CustomSheetValidSelect: boolean;
+  FormatID, i: integer;
+  ImgFmt, sql: string;
+  Info: TWhatINeedToKnow;
+  jpegStream, Stream: TMemoryStream;
+  jpg: TJPEGImage;
+  q: TSQLQuery;
+  sl: TStringList;
+  Dims: tPoint;
+begin
+  if ConvertToSupportedImage(Stream,ImgFmt) then begin
+    // Figure out if we've got a valid selection in a listbox depending on the tab we're in
+    ActiveLB := nil;
+    ActivePage := PageControl1.ActivePage;
+    BuildSheetValidSelect := (ActivePage = tsBuildSheet) and (lbBuildList.ItemIndex >= 0);
+    if BuildSheetValidSelect then begin
+      ActiveLB := lbBuildList;
+    end else begin
+      // We need to set CustomSheetValidSelect just in case a tab does not have content in the LB
+      ActiveLB := TListBox(FindAnyComponent(ActivePage, 'lb__' + SafeComponentName(ActivePage.Caption) + '__List'));
+      CustomSheetValidSelect := (ActivePage <> tsBuildSheet) and (ActiveLB.ItemIndex >= 0);
+    end;
+
+    // Prepare Info object
+    Info := TWhatINeedToKnow.Create;
+    Info.Database := s3db;  // <-- replace with your actual object
+    Info.TableToWorkWith := 'ComponentImages';
+    Info.FieldForBlob := 'RawData';
+    Info.FieldForID := 'ImageID';
+    Info.RecordID := -1;  // insert mode
+    Info.CompressedContent := True;
+
+    Dims := GetImageDimensions(Stream);
+
+    StreamToDB(Info, stream);
+
+    sql := Format('update %s set ComponentType=:CompType, ComponentID=:CompID, Filename=:FileName, Width=:Width, Height=:Height, Format=:Format, OriginalFileName=:Filename where ImageID=:ImageID', [Info.TableToWorkWith]);
+    q := NewQuery(S3DB);
+    q.SQL.Text := sql;
+    q.ParamByName('ImageID').AsInteger := Info.RecordID;
+    if ActiveLB = lbBuildList then begin
+      q.ParamByName('CompType').AsString := ActivePage.Caption;
+    end else begin
+      q.ParamByName('CompType').AsString := SafeComponentName(ActivePage.Caption);
+    end;
+    q.ParamByName('CompID').AsInteger := O2I(ActiveLB.Items.Objects[ActiveLB.ItemIndex]);
+    q.ParamByName('Filename').AsString := 'Clipboard_' + SafeComponentName(ActivePage.Caption) + '_' + IntToStr(info.RecordID) + '.jpg';
+    q.ParamByName('Format').AsString := ImgFmt;
+    q.ParamByName('Width').AsInteger := Dims.X;
+    q.ParamByName('Height').AsInteger := Dims.Y;
+    q.ExecSQL;
+    EndQuery(q);
+
+    Info.Free;
+    Stream.Free;
+    ReloadImagesOnScreen;
+
+  end;
+
 end;
 
 procedure TForm1.mnuResetManifestClick (Sender: TObject);
@@ -1311,11 +1561,56 @@ begin
   // TODO: Log assignment change to memo here
 
   UpdateBuildAssignmentStatus(TabShortName);
+  ReloadImagesOnScreen;
 end;
 
 procedure TForm1.ThumbnailClick (Sender: TObject);
+const
+  CompImages = 'select ComponentType,ComponentID from ComponentImages where ImageID=:ImageID';
+var
+  ActiveLB: TListBox;
+  ActiveTab: TTabSheet;
+  ImageID: integer;
+  q: TSQLQuery;
+  ComponentType: string;
+  ComponentID: integer;
+  i: integer;
 begin
-  application.MessageBox('Clickededed', '', MB_OK);
+  //  application.MessageBox('Clickededed', '', MB_OK);
+  // Determine what Component and ComponentID this is so we can go find the appropriate details
+  // - Query the table for the ComponentType and ComponentID
+  // - Search through the tablist for the "safe" tab caption.  (Build List never comes into play since we're going to a component to manage)
+  // - If we get a hit, switch to that tab, and we'll have to wait for the change to take effect on the PageControl.
+  // - Once we're done and the listbox is populated, seek the itemindex of the object for what ComponentID is
+
+  ImageID := TImage(Sender).Tag;
+  q := NewQuery(s3db);
+  q.SQL.Text := CompImages;
+  q.ParamByName('ImageID').AsInteger := ImageID;
+  q.Open;
+  ComponentID := -1;
+  if not q.EOF then begin
+    ComponentType := q.FieldByName('ComponentType').AsString;
+    ComponentID := q.FieldByName('ComponentID').AsInteger;
+  end;
+  EndQuery(q);
+
+  if ComponentID <> -1 then begin
+    // For the length of time it'll take to go through the tabs, a for loop is acceptable
+    for i := 1 to PageControl1.PageCount - 1 do begin
+      if SafeComponentName(PageControl1.Page[i].Caption) = ComponentType then begin
+        PageControl1.ActivePageIndex := i;
+        PageControl1Change(nil);
+        ActiveTab := PageControl1.ActivePage;
+        ActiveLB := TListBox(FindAnyComponent(ActiveTab, 'lb__' + SafeComponentName(ActiveTab.Caption) + '__List'));
+        ActiveLB.ItemIndex:=ActiveLB.Items.IndexOfObject(i2o(ComponentID));
+        ActiveLB.Click;
+      end;
+    end;
+  end else begin
+    Application.MessageBox('Warning: This image no longer exists in the database.  Aborting.', 'Aborting', MB_OK + MB_ICONEXCLAMATION);
+  end;
+
 end;
 
 
@@ -1411,6 +1706,7 @@ begin
     MenuItem.Visible := ActivePageName = MenuItemCaption;
   end;
 
+  ImageContainer.Parent := PageControl1.ActivePage;
   // Check if this is a dynamic tab by looking at INI or _T suffix
   DynamicTab := False;
   Ini := TIniFile.Create('Structure.ini');
@@ -1449,6 +1745,7 @@ begin
     // Toggle the visibility of the component assignment to build panel
     tPanel(FindAnyComponent(Form1, SafeComponentName(ShortName + '__BuildAssign__Panel'))).Visible := lbBuildList.ItemIndex >= 0;
   end;
+  ReloadImagesOnScreen;
 end;
 
 procedure TForm1.LoadDataIntoListBox (ListBox: TListBox; const TableName: string);
@@ -1888,6 +2185,7 @@ begin
     // Call general-purpose spec population logic
     PopulateSpecsPane(DeviceID, TabShortName);
     UpdateBuildAssignmentStatus(TabShortName);
+    ReloadImagesOnScreen;
   end;
 end;
 

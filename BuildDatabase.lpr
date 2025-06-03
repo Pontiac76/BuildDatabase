@@ -19,7 +19,7 @@ uses
   UIManager,
   TabGrouping,
   ComponentDetails,
-  frmCamera;
+  frmCamera, uStreamToDB;
 
   {$R *.res}
 
