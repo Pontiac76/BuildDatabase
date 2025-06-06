@@ -136,6 +136,7 @@
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir);..\..\forks\imaginglib\Source"/>
       <Libraries Value="..\..\forks\imaginglib\Extensions\LibTiff\Compiled"/>
+      <OtherUnitFiles Value="..\..\forks\imaginglib\Source"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Linking>

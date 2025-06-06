@@ -29,7 +29,6 @@ type
     lbBuildList: TListBox;
     MainMenu1: TMainMenu;
     Memo1: TMemo;
-    Memo2: TMemo;
     mnuPasteImage: TMenuItem;
     MenuItem11: TMenuItem;
     MenuItem12: TMenuItem;
@@ -75,6 +74,8 @@ type
     procedure FormDestroy (Sender: TObject);
     procedure imagePopupClick (Sender: TObject);
     procedure lbBuildListClick (Sender: TObject);
+
+    procedure lbBuildListMouseDown (Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: integer);
     procedure Memo1Exit (Sender: TObject);
     procedure MenuItem4Click (Sender: TObject);
     procedure mnuExitClick (Sender: TObject);
@@ -129,7 +130,7 @@ type
     function ConvertBMPClipboardToOptimalFormat (out FileFormat: string): TMemoryStream;
     procedure SaveStreamToDatabase (InStream: tMemoryStream; Ext: string);
     function GetImageDimensions (Stream: TMemoryStream): TPoint;
-    function ConvertToSupportedImage (out Stream: tMemoryStream;out ImgFmt:string): boolean;
+    function ConvertToSupportedImage (out Stream: tMemoryStream; out ImgFmt: string): boolean;
   public
     function GetBuildIdForComponent (ComponentID: integer; Component: string): integer;
     function GetBuildNameForID (ID: integer): string;
@@ -823,6 +824,11 @@ begin
   ReloadImagesOnScreen;
 end;
 
+procedure TForm1.lbBuildListMouseDown (Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: integer);
+begin
+  lbBuildList.ItemIndex := lbBuildList.GetIndexAtY(y);
+end;
+
 procedure TForm1.Memo1Exit (Sender: TObject);
 (*
 @AI:summary: If there has been any change to the Memo field for this build, update the SQLite table with the note details.
@@ -892,8 +898,7 @@ begin
     OutStream.Position := 0;
 
     // Insert placeholder to get ImageID
-    SQL := 'INSERT or replace INTO ComponentImages (ComponentType, ComponentID, FileName, Format, Width, Height, OriginalFileName) ' +
-      'VALUES (:ctype, :cid, :fname, :fmt, :w, :h, :oname);';
+    SQL := 'INSERT or replace INTO ComponentImages (ComponentType, ComponentID, FileName, Format, Width, Height, OriginalFileName) VALUES (:ctype, :cid, :fname, :fmt, :w, :h, :oname);';
     Q := NewQuery(S3DB);
     Q.SQL.Text := SQL;
     Q.ParamByName('ctype').AsString := ComponentType;
@@ -1068,31 +1073,6 @@ begin
     NewHeight
     );
 end;
-
-
-//procedure LoadImageBlobIntoControl (var q: TSQLQuery; var ImageControl: TImage);
-//var
-//  Img: TImageData; // ← new record *each time*
-//  CompressedStream, DecompressedStream: TMemoryStream;
-//begin
-//  CompressedStream := TMemoryStream.Create;
-//  DecompressedStream := nil;
-//  try
-//    TBlobField(q.FieldByName('RawData')).SaveToStream(CompressedStream);
-//    CompressedStream.Position := 0;
-//
-//    DecompressedStream := DecompressZlib(CompressedStream, q.FieldByName('UncompressedSize').AsInteger);
-//    DecompressedStream.Position := 0;
-//    LoadImageFromStream(DecompressedStream, img);
-//    LoadImageToControl(Img, ImageControl); // whatever this is
-//    CenterImageInPanel(ImageControl);
-//
-//  finally
-//    DecompressedStream.Free;
-//    CompressedStream.Free;
-//  end;
-//end;
-
 
 procedure LoadImageBlobIntoControl (var q: TSQLQuery; var ImageControl: TImage);
 var
@@ -1358,7 +1338,7 @@ begin
 end;
 
 
-function tForm1.ConvertToSupportedImage (out Stream: tMemoryStream;out ImgFmt:string): boolean;
+function tForm1.ConvertToSupportedImage (out Stream: tMemoryStream; out ImgFmt: string): boolean;
 begin
   // Convert the clipboard to PNG or JPEG.
   Result := True;
@@ -1391,7 +1371,7 @@ var
   sl: TStringList;
   Dims: tPoint;
 begin
-  if ConvertToSupportedImage(Stream,ImgFmt) then begin
+  if ConvertToSupportedImage(Stream, ImgFmt) then begin
     // Figure out if we've got a valid selection in a listbox depending on the tab we're in
     ActiveLB := nil;
     ActivePage := PageControl1.ActivePage;
@@ -1603,7 +1583,7 @@ begin
         PageControl1Change(nil);
         ActiveTab := PageControl1.ActivePage;
         ActiveLB := TListBox(FindAnyComponent(ActiveTab, 'lb__' + SafeComponentName(ActiveTab.Caption) + '__List'));
-        ActiveLB.ItemIndex:=ActiveLB.Items.IndexOfObject(i2o(ComponentID));
+        ActiveLB.ItemIndex := ActiveLB.Items.IndexOfObject(i2o(ComponentID));
         ActiveLB.Click;
       end;
     end;
@@ -1708,16 +1688,17 @@ begin
 
   ImageContainer.Parent := PageControl1.ActivePage;
   // Check if this is a dynamic tab by looking at INI or _T suffix
-  DynamicTab := False;
-  Ini := TIniFile.Create('Structure.ini');
-  try
-    DynamicTab := Ini.ValueExists('ORDER', ActivePageName);
-  finally
-    Ini.Free;
+  DynamicTab := PageControl1.ActivePage.Name.EndsWith('_T');
+  if not DynamicTab then begin
+    Ini := TIniFile.Create('Structure.ini');
+    try
+      DynamicTab := Ini.ValueExists('ORDER', ActivePageName);
+    finally
+      Ini.Free;
+    end;
   end;
 
   if not DynamicTab then begin
-    DynamicTab := PageControl1.ActivePage.Name.EndsWith('_T');
   end;
 
   // Skip processing if this is not a dynamic tab
@@ -1767,7 +1748,14 @@ begin
 
   Query := NewQuery(S3DB);
   try
-    Query.SQL.Text := 'SELECT DeviceID, QRCode, Title FROM ' + TableName + ' ORDER BY upper(Title);';
+    if lbBuildList.ItemIndex = -1 then begin
+      Query.SQL.Text := 'SELECT DeviceID, QRCode, Title FROM ' + TableName + ' ORDER BY upper(Title),QRCode;';
+    end else begin
+      Query.Sql.Text := 'select DeviceID, QRCode, Title FROM ' + TableName + ' order by DeviceID in (select ComponentID from BuildComponents where Component=:Component and BuildID=:BuildID) desc,lower(Title),QRCode;';
+      Query.ParamByName('Component').AsString := SafeComponentName(PageControl1.ActivePage.Caption);
+      Query.ParamByName('BuildID').AsInteger := o2i(lbBuildList.Items.Objects[lbBuildList.ItemIndex]);
+    end;
+
     Query.Open;
 
     while not Query.EOF do begin
@@ -2038,7 +2026,7 @@ begin
   ItemList.Parent := LeftPanel;
   ItemList.Align := alClient;
   ItemList.Name := SafeComponentName('lb__' + ComponentName + '__List');
-  ItemList.Sorted := True;
+  ItemList.Sorted := False;
   ItemList.OnClick := @ListBoxClick;
 
   // Create Frame1 (holds Frame2s horizontally)

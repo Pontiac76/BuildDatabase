@@ -44,9 +44,11 @@ object Form1: TForm1
           Font.Height = -16
           Font.Name = 'System'
           ItemHeight = 0
+          ParentColor = True
           ParentFont = False
           TabOrder = 0
           OnClick = lbBuildListClick
+          OnMouseDown = lbBuildListMouseDown
         end
       end
       object Panel1: TPanel
@@ -150,16 +152,6 @@ object Form1: TForm1
               Caption = 'Notes about Build'
               TabOrder = 1
             end
-            object Memo2: TMemo
-              Left = 89
-              Height = 608
-              Top = 122
-              Width = 861
-              Lines.Strings = (
-                'Memo2'
-              )
-              TabOrder = 2
-            end
           end
           object TabSheet2: TTabSheet
             Caption = 'Build History'
@@ -187,6 +179,7 @@ object Form1: TForm1
       Caption = '&File'
       object MenuItem7: TMenuItem
         Caption = '&Attach Image(s)...'
+        ShortCut = 24641
         OnClick = mnuLoadImageClick
       end
       object mnuPasteImage: TMenuItem
