@@ -19,7 +19,8 @@ uses
   UIManager,
   TabGrouping,
   ComponentDetails,
-  frmCamera, uStreamToDB;
+  //frmCamera,
+  uStreamToDB;
 
   {$R *.res}
 
@@ -28,6 +29,6 @@ begin
   Application.Scaled:=True;
   Application.Initialize;
   Application.CreateForm(TForm1, Form1);
-  Application.CreateForm(tCamera,CameraForm);
+  //Application.CreateForm(tCamera,CameraForm);
   Application.Run;
 end.
