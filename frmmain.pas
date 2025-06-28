@@ -125,6 +125,8 @@ type
     procedure AddGlobalFieldsToFrame (Frame: TFrame1; ComponentName: string);
     procedure CreateBuildAssignmentPanel (Frame: TFrame1; TabShortName: string);
     procedure UpdateBuildAssignmentStatus (const TabShortName: string);
+    procedure PrepareIdleDeletes (ParentComponent: tControl);
+    procedure PerformIdleDeletes;
 
     // Image dealings
     procedure ImportImageForComponent (ImagePath: string; ComponentType: string; ComponentID: integer);
@@ -154,7 +156,7 @@ uses IniFiles, SimpleSQLite3, DatabaseManager, MiscFunctions, ComponentDetails,
   { TForm1 }
 var
   MenuToggleList: TStringList;
-  //  ListOfCustomObjects: TStringList;
+  IdleDeleteObjects: TList;
 
 const
   EditHeight = 25;
@@ -738,6 +740,7 @@ begin
 
   DeleteChildObjects(sbSystemBuildSpecs);
   RefreshBuildList;
+  IdleDeleteObjects := TList.Create;
 
 end;
 
@@ -774,6 +777,10 @@ begin
 
 
   mnuPasteImage.Enabled := HasImage and HasSelection;
+
+  if IdleDeleteObjects.Count > 0 then begin
+    PerformIdleDeletes;
+  end;
 end;
 
 var
@@ -797,11 +804,11 @@ begin
         CurCol := RGBToColor(255, 10, 0);
         FlashGreenDirection := 10;
       end;
-      CurrentGreen:=curcol and $00ff00 shr 8;
+      CurrentGreen := curcol and $00ff00 shr 8;
       if (CurrentGreen >= 240) or (CurrentGreen = 0) then begin
         FlashGreenDirection := -FlashGreenDirection;
       end;
-      CurrentGreen:=CurrentGreen+FlashGreenDirection;
+      CurrentGreen := CurrentGreen + FlashGreenDirection;
       CurCol := RGBToColor(255, CurrentGreen, 0);
       ButtonAction.Color := CurCol;
     end;
@@ -822,6 +829,7 @@ begin
 
   DeleteChildObjects(TComponent(sbSystemBuildSpecs));
   CleanupDynamicMenus;
+  IdleDeleteObjects.Free;
 end;
 
 procedure TForm1.imagePopupClick (Sender: TObject);
@@ -1178,7 +1186,8 @@ var
   PropX, PropY: integer;
   ActiveLB: TListBox;
 begin
-  DeleteChildObjects(sbBuildImages);
+  //DeleteChildObjects(sbBuildImages);
+  PrepareIdleDeletes(sbBuildImages);
   if PageControl1.ActivePage = tsBuildSheet then begin
     ActiveLB := lbBuildList;
     sql := BuildImageQuery;
@@ -1210,7 +1219,7 @@ begin
       Image := TImage.Create(Panel);
       Image.Parent := Panel;
       Image.Stretch := True;
-      Image.Name := 'img' + SafeComponentName(Panel.Caption);
+      Image.Name := 'img' + SafeComponentName(Panel.Name);
       Image.OnDblClick := @ThumbnailClick;
       Image.Tag := CompsInBld.FieldByName('ImageID').AsInteger;
       Image.PopupMenu := PopupMenu1;
@@ -1372,7 +1381,7 @@ begin
 end;
 
 
-function tForm1.ConvertToSupportedImage (out Stream: tMemoryStream; out ImgFmt: string): boolean;
+function TForm1.ConvertToSupportedImage (out Stream: tMemoryStream; out ImgFmt: string): boolean;
 begin
   // Convert the clipboard to PNG or JPEG.
   Result := True;
@@ -1663,7 +1672,7 @@ var
   SelectedComponentID, BuildID, AssignedBuildID: integer;
   AssignedBuildName: string;
   Prefix: string;
-  ColorPanel:TPanel;
+  ColorPanel: TPanel;
 begin
   Prefix := TabShortName + '__BuildAssign__';
   ListBox := TListBox(FindAnyComponent(PageControl1.ActivePage, 'lb__' + TabShortName + '__List'));
@@ -1704,6 +1713,64 @@ begin
     AssignButtonFlashTimer.Enabled := False;
     Panel.Color := clDefault;
   end;
+end;
+
+function RandomChar (Size: integer): string;
+var
+  rs: string;
+  x: integer;
+begin
+  rs := '';
+  for x := 1 to Size do begin
+    rs := rs + chr(Random(26) + Ord('A'));
+  end;
+  result:=rs;
+end;
+
+procedure TForm1.PrepareIdleDeletes (ParentComponent: tControl);
+var
+  x: integer;
+  pc: TControl;
+begin
+  //  IdleDeleteObjects
+  for x := 0 to ParentComponent.ComponentCount - 1 do begin
+    pc := TControl(ParentComponent.Components[x]);
+    if IdleDeleteObjects.IndexOf(TObject(pc)) = -1 then begin
+      pc.Name := pc.Name + '_Delete_' + randomchar(16);
+      IdleDeleteObjects.Add(TObject(ParentComponent.Components[x]));
+      if tControl(ParentComponent.Components[x]).ComponentCount > 0 then begin
+        tControl(ParentComponent.Components[x]).Visible := False;
+        PrepareIdleDeletes(tControl(ParentComponent.Components[x]));
+      end;
+    end;
+  end;
+end;
+
+procedure TForm1.PerformIdleDeletes;
+var
+  x: integer;
+  twc: tControl;
+begin
+  for x := IdleDeleteObjects.Count - 1 downto 0 do begin
+    twc := tControl(IdleDeleteObjects.Items[x]);
+    if assigned(twc) then begin
+      if tControl(twc) is TEdit then begin
+        TEdit(twc).Free;
+      end else if twc is TComboBox then begin
+        TComboBox(twc).Free;
+      end else if twc is TGroupBox then begin
+        TGroupBox(twc).Free;
+      end else if twc is TPanel then begin
+        TPanel(twc).Free;
+      end else if tControl(twc) is TImage then begin
+        TImage(twc).Picture.Clear;
+        TImage(twc).Free;
+      end else begin
+        MessageDlg('Error', 'Unknown Component Type: ' + twc.Name, TMsgDlgType.mtError, [mbOK], '');
+      end;
+    end;
+  end;
+  IdleDeleteObjects.Clear;
 end;
 
 procedure TForm1.PageControl1Change (Sender: TObject);
