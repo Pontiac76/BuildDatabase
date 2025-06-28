@@ -67,9 +67,11 @@ type
     Splitter2: TSplitter;
     TabSheet1: TTabSheet;
     TabSheet2: TTabSheet;
+    AssignButtonFlashTimer: TTimer;
     tsBuildSheet: TTabSheet;
 
     procedure ApplicationProperties1Idle (Sender: TObject; var Done: boolean);
+    procedure AssignButtonFlashTimerTimer (Sender: TObject);
     procedure FormCreate (Sender: TObject);
     procedure FormDestroy (Sender: TObject);
     procedure imagePopupClick (Sender: TObject);
@@ -772,6 +774,38 @@ begin
 
 
   mnuPasteImage.Enabled := HasImage and HasSelection;
+end;
+
+var
+  FlashGreenDirection: integer = 10;
+
+procedure TForm1.AssignButtonFlashTimerTimer (Sender: TObject);
+var
+  ButtonAction: TPanel;
+  CurCol: TColor;
+  Prefix: string;
+  TabShortName: string;
+  CurrentGreen: integer;
+begin
+  TabShortName := SafeComponentName(PageControl1.ActivePage.Caption);
+  Prefix := TabShortName + '__BuildAssign__';
+  ButtonAction := TPanel(FindAnyComponent(PageControl1.ActivePage, SafeComponentName(Prefix + 'Panel')));
+  if PageControl1.ActivePage <> tsBuildSheet then begin
+    if assigned(ButtonAction) then begin
+      CurCol := ButtonAction.Color;
+      if CurCol = clDefault then begin
+        CurCol := RGBToColor(255, 10, 0);
+        FlashGreenDirection := 10;
+      end;
+      CurrentGreen:=curcol and $00ff00 shr 8;
+      if (CurrentGreen >= 240) or (CurrentGreen = 0) then begin
+        FlashGreenDirection := -FlashGreenDirection;
+      end;
+      CurrentGreen:=CurrentGreen+FlashGreenDirection;
+      CurCol := RGBToColor(255, CurrentGreen, 0);
+      ButtonAction.Color := CurCol;
+    end;
+  end;
 end;
 
 procedure TForm1.FormDestroy (Sender: TObject);
@@ -1583,8 +1617,10 @@ begin
         PageControl1Change(nil);
         ActiveTab := PageControl1.ActivePage;
         ActiveLB := TListBox(FindAnyComponent(ActiveTab, 'lb__' + SafeComponentName(ActiveTab.Caption) + '__List'));
-        ActiveLB.ItemIndex := ActiveLB.Items.IndexOfObject(i2o(ComponentID));
-        ActiveLB.Click;
+        if ActiveLB.ItemIndex <> ActiveLB.Items.IndexOfObject(i2o(ComponentID)) then begin
+          ActiveLB.ItemIndex := ActiveLB.Items.IndexOfObject(i2o(ComponentID));
+          ActiveLB.Click;
+        end;
       end;
     end;
   end else begin
@@ -1627,6 +1663,7 @@ var
   SelectedComponentID, BuildID, AssignedBuildID: integer;
   AssignedBuildName: string;
   Prefix: string;
+  ColorPanel:TPanel;
 begin
   Prefix := TabShortName + '__BuildAssign__';
   ListBox := TListBox(FindAnyComponent(PageControl1.ActivePage, 'lb__' + TabShortName + '__List'));
@@ -1657,10 +1694,15 @@ begin
   // Update button
   if AssignedBuildID = -1 then begin
     ButtonAction.Caption := 'Assign to Build';
+    AssignButtonFlashTimer.Enabled := True;
   end else if AssignedBuildID = BuildID then begin
     ButtonAction.Caption := 'Remove from Build';
+    AssignButtonFlashTimer.Enabled := False;
+    Panel.Color := clDefault;
   end else begin
     ButtonAction.Caption := 'Move from ' + AssignedBuildName + LineEnding + 'to current build';
+    AssignButtonFlashTimer.Enabled := False;
+    Panel.Color := clDefault;
   end;
 end;
 

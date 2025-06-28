@@ -1,7 +1,7 @@
 object Form1: TForm1
-  Left = 633
+  Left = 74
   Height = 1028
-  Top = -1080
+  Top = -1078
   Width = 1632
   Caption = 'Form1'
   ClientHeight = 1028
@@ -284,5 +284,12 @@ object Form1: TForm1
       Caption = 'Delete Image'
       OnClick = imagePopupClick
     end
+  end
+  object AssignButtonFlashTimer: TTimer
+    Enabled = False
+    Interval = 100
+    OnTimer = AssignButtonFlashTimerTimer
+    Left = 38
+    Top = 335
   end
 end
