@@ -11,5 +11,12 @@ These are issues with how the user interacts with the UI, not necessarily what t
 ## App Layer: Logic
 These are issues with how the application "thinks" and "acts".  This could tie into either UI or Database interactions.  These issues relate directly to the Pascal source code.
 
-## AppLayer: UI
+## App Layer: UI
 These are issues to how the UI looks and feels and presents itself.  These are issues that deal with the form layouts.  This does not deal with how the user interacts with the software.
+
+# Notes
+This does not mean that these different layers can't be assigned to the same issue.
+
+For example, UI and Interactions could be put together to indicate that there is something wrong with how the UI is layed out, and how the user interacts with the application.
+
+Same with Logic and Database.  There may be some kind of logic problem that is affecting how the database is interacted with.
