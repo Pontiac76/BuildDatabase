@@ -8,7 +8,12 @@ unit MiscFunctions;
 interface
 
 uses
-  Classes, SysUtils, StdCtrls, Forms, LCLIntf, LCLType, Controls, Math, Imaging, ImagingTypes;
+  Classes, SysUtils, StdCtrls, Forms, LCLIntf, LCLType, Controls, Math, Imaging, ImagingTypes, RegExpr;
+
+
+type
+  TQRType = (QRCode, QRURL, QRPhoneNumber);
+  TQRTypes = set of TQRType;
 
 function NoSpaces (stIn: string): string;
 function NoDoubleSpace (stIn: string): string;
@@ -19,11 +24,51 @@ procedure SizeForm (frm, relativeTo: TForm; Scale: byte);
 function SafeComponentName (Raw: string): string;
 function CalcCRC32Hex (Stream: TStream): string;
 procedure ResizeImageMax (var Img: TImageData; MaxWidth, MaxHeight: integer);
+function FindAnyComponent (Root: TComponent; const Name: string): TComponent;
+function ValidateQRCode (QRType: TQRType; QRString: string): boolean;
 
 implementation
 
 const
   CRLF = chr(13) + chr(10);
+
+
+function FindAnyComponent (Root: TComponent; const Name: string): TComponent;
+  (*
+  @AI:summary: This function likely searches for a component by its name within a specified root component.
+  @AI:params: Root: The root component from which the search for the named component begins.
+  @AI:params: Name: The name of the component to be searched for within the root component.
+  @AI:returns: The function is expected to return the found component or nil if not found.
+  *)
+var
+  i: integer;
+  Found: TComponent;
+begin
+  if Root.Name = Name then begin
+    Result := Root;
+    Exit;
+  end;
+
+  // Search recursively through subcomponents
+  for i := 0 to Root.ComponentCount - 1 do begin
+    Found := FindAnyComponent(Root.Components[i], Name);
+    if Assigned(Found) then begin
+      Result := Found;
+      Exit;
+    end;
+  end;
+
+  // Final fallback: use Root.FindComponent (only if supported)
+  if Assigned(Root) then begin
+    Found := Root.FindComponent(Name);
+    if Assigned(Found) then begin
+      Result := Found;
+      Exit;
+    end;
+  end;
+
+  Result := nil;
+end;
 
 procedure ResizeImageMax (var Img: TImageData; MaxWidth, MaxHeight: integer);
 var
@@ -196,6 +241,31 @@ begin
   Result := -1;
   if lb.ItemIndex <> -1 then begin
     Result := o2i(lb.Items.Objects[lb.ItemIndex]);
+  end;
+end;
+
+function ValidateQRCode (QRType: TQRType; QRString: string): boolean;
+(*
+@AI:summary: Validates a QR code based on its type and content.
+@AI:params: QRType: Specifies the type of QR code to validate.
+@AI:params: QRString: The actual string content of the QR code to be validated.
+@AI:returns: Returns true if the QR code is valid, otherwise false.
+*)
+begin
+  Result := False;
+
+  case QRType of
+    QRCode: begin
+      Result := ExecRegExpr('^[0-9]{4}-[0-9]{3}$', QRString);
+    end;
+    QRURL: begin
+      // TODO: Implement URL validation
+      Result := True;
+    end;
+    QRPhoneNumber: begin
+      // TODO: Implement phone number validation
+      Result := True;
+    end;
   end;
 end;
 

@@ -14,12 +14,9 @@ interface
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, Menus, ComCtrls, StdCtrls,
   ExtCtrls, LCLType, Buttons, ExtDlgs, RTTICtrls, SynEdit,
-  RegExpr, SQLite3Conn, SQLite3, SQLDB, TabGrouping, ActnList;
+  RegExpr, SQLite3Conn, SQLite3, SQLDB, TabGrouping, ActnList, MiscFunctions;
 
 type
-  TQRType = (QRCode, QRURL, QRPhoneNumber);
-  TQRTypes = set of TQRType;
-
   { TForm1 }
 
   TForm1 = class(TForm)
@@ -29,6 +26,7 @@ type
     lbBuildList: TListBox;
     MainMenu1: TMainMenu;
     Memo1: TMemo;
+    MenuItem1: TMenuItem;
     mnuPasteImage: TMenuItem;
     MenuItem11: TMenuItem;
     MenuItem12: TMenuItem;
@@ -79,6 +77,7 @@ type
 
     procedure lbBuildListMouseDown (Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: integer);
     procedure Memo1Exit (Sender: TObject);
+    procedure MenuItem1Click (Sender: TObject);
     procedure MenuItem4Click (Sender: TObject);
     procedure mnuExitClick (Sender: TObject);
     procedure MenuItem2Click (Sender: TObject);
@@ -118,7 +117,6 @@ type
     procedure PopulateComponentList (ComponentName: string; TargetListBox: TListBox);
 
     function PromptAndValidateQRCodeAndTitle (TabCaption: string; QRTypes: TQRType; out QRString, Title: string): boolean;
-    function ValidateQRCode (QRType: TQRType; QRString: string): boolean;
     function HandleBuildComponentAction (Mode, ShortName: string; OptionalDeviceID: integer = -1): boolean;
     function AddBuildComponent (ShortName: string): boolean;
     function DeleteBuildComponent (ShortName: string): boolean;
@@ -146,10 +144,9 @@ var
 
 implementation
 
-uses IniFiles, SimpleSQLite3, DatabaseManager, MiscFunctions, ComponentDetails,
-  Clipbrd, uStreamToDB, DB, Math, Imaging, ImagingTypes, ImagingClasses, ImagingJPEG,
-  zlib,
-  FPImage, FPReadBMP, FPWriteJPEG, FPWritePNG;
+uses IniFiles, SimpleSQLite3, DatabaseManager, ComponentDetails,
+  Clipbrd, uStreamToDB, frmBuildSheet, DB, Math, Imaging, ImagingTypes, ImagingClasses,
+  ImagingJPEG, zlib, FPImage, FPReadBMP, FPWriteJPEG, FPWritePNG;
 
   {$R *.lfm}
 
@@ -160,43 +157,6 @@ var
 
 const
   EditHeight = 25;
-
-function FindAnyComponent (Root: TComponent; const Name: string): TComponent;
-(*
-@AI:summary: This function likely searches for a component by its name within a specified root component.
-@AI:params: Root: The root component from which the search for the named component begins.
-@AI:params: Name: The name of the component to be searched for within the root component.
-@AI:returns: The function is expected to return the found component or nil if not found.
-*)
-var
-  i: integer;
-  Found: TComponent;
-begin
-  if Root.Name = Name then begin
-    Result := Root;
-    Exit;
-  end;
-
-  // Search recursively through subcomponents
-  for i := 0 to Root.ComponentCount - 1 do begin
-    Found := FindAnyComponent(Root.Components[i], Name);
-    if Assigned(Found) then begin
-      Result := Found;
-      Exit;
-    end;
-  end;
-
-  // Final fallback: use Root.FindComponent (only if supported)
-  if Assigned(Root) then begin
-    Found := Root.FindComponent(Name);
-    if Assigned(Found) then begin
-      Result := Found;
-      Exit;
-    end;
-  end;
-
-  Result := nil;
-end;
 
 function IsDynamicTab (const TabCaption: string): boolean;
 (*
@@ -547,31 +507,6 @@ begin
   end;
 end;
 
-function TForm1.ValidateQRCode (QRType: TQRType; QRString: string): boolean;
-(*
-@AI:summary: Validates a QR code based on its type and content.
-@AI:params: QRType: Specifies the type of QR code to validate.
-@AI:params: QRString: The actual string content of the QR code to be validated.
-@AI:returns: Returns true if the QR code is valid, otherwise false.
-*)
-begin
-  Result := False;
-
-  case QRType of
-    QRCode: begin
-      Result := ExecRegExpr('^[0-9]{4}-[0-9]{3}$', QRString);
-    end;
-    QRURL: begin
-      // TODO: Implement URL validation
-      Result := True;
-    end;
-    QRPhoneNumber: begin
-      // TODO: Implement phone number validation
-      Result := True;
-    end;
-  end;
-end;
-
 function TForm1.HandleBuildComponentAction (Mode, ShortName: string; OptionalDeviceID: integer = -1): boolean;
 (*
 TODO: Review what the status of this function is specifically.
@@ -890,6 +825,15 @@ begin
       EndQuery(q);
     end;
     Memo1.Modified := False;
+  end;
+end;
+
+procedure TForm1.MenuItem1Click (Sender: TObject);
+begin
+  BuildSheet.btnClearSheet.Click;
+  if BuildSheet.ShowModal = mrOk then begin
+    PageControl1.PageIndex:=0;
+    MenuItem8Click(nil);
   end;
 end;
 
@@ -1724,7 +1668,7 @@ begin
   for x := 1 to Size do begin
     rs := rs + chr(Random(26) + Ord('A'));
   end;
-  result:=rs;
+  Result := rs;
 end;
 
 procedure TForm1.PrepareIdleDeletes (ParentComponent: tControl);

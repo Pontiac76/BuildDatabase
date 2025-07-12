@@ -125,6 +125,14 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="uStreamToDB"/>
       </Unit>
+      <Unit>
+        <Filename Value="frmbuildsheet.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="BuildSheet"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="frmBuildSheet"/>
+      </Unit>
     </Units>
   </ProjectOptions>
   <CompilerOptions>

@@ -1,0 +1,255 @@
+object BuildSheet: TBuildSheet
+  Left = -1927
+  Height = 743
+  Top = -1083
+  Width = 1127
+  Caption = 'BuildSheet'
+  ClientHeight = 743
+  ClientWidth = 1127
+  OnCreate = FormCreate
+  OnDestroy = FormDestroy
+  OnResize = FormResize
+  Position = poMainFormCenter
+  ShowInTaskBar = stNever
+  LCLVersion = '3.4.0.0'
+  Scaled = False
+  object gbBuildSheets: TGroupBox
+    Left = 928
+    Height = 743
+    Top = 0
+    Width = 199
+    Align = alRight
+    Caption = 'Build Sheet Models'
+    ClientHeight = 723
+    ClientWidth = 195
+    TabOrder = 0
+    OnResize = gbBuildSheetsResize
+    object cboBuildSheetModel: TComboBox
+      Left = 3
+      Height = 23
+      Top = 3
+      Width = 189
+      Align = alTop
+      BorderSpacing.Around = 3
+      ItemHeight = 15
+      Style = csDropDownList
+      TabOrder = 0
+      OnChange = cboBuildSheetModelChange
+    end
+    object Panel1: TPanel
+      Left = 0
+      Height = 30
+      Top = 29
+      Width = 195
+      Align = alTop
+      Caption = ' '
+      ClientHeight = 30
+      ClientWidth = 195
+      TabOrder = 1
+      object btnSaveModel: TButton
+        Left = 5
+        Height = 20
+        Top = 5
+        Width = 73
+        Align = alLeft
+        BorderSpacing.Around = 4
+        Caption = 'Save'
+        TabOrder = 0
+        OnClick = btnSaveModelClick
+      end
+      object btnDeleteModel: TButton
+        Left = 81
+        Height = 20
+        Top = 5
+        Width = 0
+        Align = alClient
+        BorderSpacing.Around = 4
+        Caption = 'Delete'
+        TabOrder = 1
+        OnClick = btnDeleteModelClick
+      end
+      object btnRenameModel: TButton
+        Left = 84
+        Height = 20
+        Top = 5
+        Width = 106
+        Align = alRight
+        BorderSpacing.Around = 4
+        Caption = 'Rename'
+        TabOrder = 2
+        OnClick = btnRenameModelClick
+      end
+    end
+    object ScrollBox1: TScrollBox
+      Left = 0
+      Height = 664
+      Top = 59
+      Width = 195
+      HorzScrollBar.Page = 1
+      VertScrollBar.Page = 1
+      Align = alClient
+      TabOrder = 2
+    end
+  end
+  object Panel5: TPanel
+    Left = 0
+    Height = 743
+    Top = 0
+    Width = 928
+    Align = alClient
+    Caption = 'Panel5'
+    ClientHeight = 743
+    ClientWidth = 928
+    TabOrder = 1
+    object Panel3: TPanel
+      Left = 1
+      Height = 50
+      Top = 692
+      Width = 926
+      Align = alBottom
+      Caption = ' '
+      ClientHeight = 50
+      ClientWidth = 926
+      TabOrder = 0
+      object btnSaveSheet: TButton
+        Left = 11
+        Height = 28
+        Top = 11
+        Width = 75
+        Align = alLeft
+        BorderSpacing.Around = 10
+        Caption = 'Save Sheet'
+        TabOrder = 0
+        OnClick = btnSaveSheetClick
+      end
+      object btnClearSheet: TButton
+        Left = 96
+        Height = 28
+        Top = 11
+        Width = 75
+        Align = alLeft
+        BorderSpacing.Around = 10
+        Caption = 'Clear Sheet'
+        TabOrder = 1
+        OnClick = btnClearSheetClick
+      end
+      object btnExportNoQR: TButton
+        Left = 181
+        Height = 28
+        Top = 11
+        Width = 99
+        Align = alLeft
+        BorderSpacing.Around = 10
+        Caption = 'Export  (NoQR)'
+        TabOrder = 2
+        OnClick = btnExportNoQRClick
+      end
+      object btnExportFull: TButton
+        Left = 290
+        Height = 28
+        Top = 11
+        Width = 99
+        Align = alLeft
+        BorderSpacing.Around = 10
+        Caption = 'Export  (Full)'
+        TabOrder = 3
+        OnClick = btnExportFullClick
+      end
+    end
+    object Panel4: TPanel
+      Left = 1
+      Height = 662
+      Top = 30
+      Width = 926
+      Align = alClient
+      Caption = 'Panel4'
+      ClientHeight = 662
+      ClientWidth = 926
+      TabOrder = 1
+      object StringGrid1: TStringGrid
+        Left = 11
+        Height = 640
+        Top = 11
+        Width = 904
+        Align = alClient
+        AlternateColor = 15066597
+        BorderSpacing.Around = 10
+        ColCount = 3
+        ColumnClickSorts = True
+        Columns = <        
+          item
+            Title.Caption = 'QR Code'
+            Width = 64
+          end        
+          item
+            Title.Caption = 'Description'
+            Width = 500
+          end>
+        ExtendedSelect = False
+        Flat = True
+        Options = [goFixedVertLine, goFixedHorzLine, goVertLine, goHorzLine, goColSizing, goEditing, goTabs, goAlwaysShowEditor, goThumbTracking, goSmoothScroll, goSelectionActive]
+        TabOrder = 0
+        OnSetEditText = StringGrid1SetEditText
+        ColWidths = (
+          64
+          64
+          500
+        )
+        Cells = (
+          1
+          0
+          0
+          'Component'
+        )
+      end
+    end
+    object Panel2: TPanel
+      Left = 1
+      Height = 29
+      Top = 1
+      Width = 926
+      Align = alTop
+      Caption = ' '
+      ClientHeight = 29
+      ClientWidth = 926
+      TabOrder = 2
+      object Label1: TLabel
+        Left = 6
+        Height = 17
+        Top = 6
+        Width = 38
+        Align = alLeft
+        BorderSpacing.Around = 5
+        Caption = 'Search:'
+        Layout = tlCenter
+      end
+      object Edit1: TEdit
+        Left = 49
+        Height = 17
+        Top = 6
+        Width = 400
+        Align = alLeft
+        BorderSpacing.Around = 5
+        TabOrder = 0
+        Text = ' '
+      end
+      object btnSearch: TButton
+        Left = 454
+        Height = 17
+        Top = 6
+        Width = 16
+        Align = alLeft
+        BorderSpacing.Around = 5
+        Caption = '🔍'
+        TabOrder = 1
+        Visible = False
+        OnClick = btnSearchClick
+      end
+    end
+  end
+  object ApplicationProperties1: TApplicationProperties
+    OnIdle = ApplicationProperties1Idle
+    Left = 68
+    Top = 148
+  end
+end

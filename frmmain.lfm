@@ -1,11 +1,11 @@
 object Form1: TForm1
-  Left = 74
+  Left = -1927
   Height = 1028
-  Top = -1078
-  Width = 1632
+  Top = -1083
+  Width = 1693
   Caption = 'Form1'
   ClientHeight = 1028
-  ClientWidth = 1632
+  ClientWidth = 1693
   Menu = MainMenu1
   OnCreate = FormCreate
   OnDestroy = FormDestroy
@@ -15,7 +15,7 @@ object Form1: TForm1
     Left = 0
     Height = 1028
     Top = 0
-    Width = 1632
+    Width = 1693
     ActivePage = tsBuildSheet
     Align = alClient
     TabIndex = 0
@@ -24,7 +24,7 @@ object Form1: TForm1
     object tsBuildSheet: TTabSheet
       Caption = 'Build List'
       ClientHeight = 1000
-      ClientWidth = 1624
+      ClientWidth = 1685
       object gbCompList1: TGroupBox
         Left = 0
         Height = 1000
@@ -55,21 +55,21 @@ object Form1: TForm1
         Left = 235
         Height = 1000
         Top = 0
-        Width = 1389
+        Width = 1450
         Align = alClient
         Caption = 'Panel1'
         ClientHeight = 1000
-        ClientWidth = 1389
+        ClientWidth = 1450
         TabOrder = 1
         object ImageContainer: TPanel
           Left = 1
           Height = 149
           Top = 850
-          Width = 1387
+          Width = 1448
           Align = alBottom
           Caption = 'To Be: Image Viewing Area'
           ClientHeight = 149
-          ClientWidth = 1387
+          ClientWidth = 1448
           ParentBackground = False
           ParentColor = False
           TabOrder = 0
@@ -77,7 +77,7 @@ object Form1: TForm1
             Left = 1
             Height = 147
             Top = 1
-            Width = 1385
+            Width = 1446
             HorzScrollBar.Increment = 1
             HorzScrollBar.Page = 1
             HorzScrollBar.Smooth = True
@@ -124,7 +124,7 @@ object Form1: TForm1
           Left = 316
           Height = 849
           Top = 1
-          Width = 1072
+          Width = 1133
           ActivePage = TabSheet1
           Align = alClient
           TabIndex = 0
@@ -132,12 +132,12 @@ object Form1: TForm1
           object TabSheet1: TTabSheet
             Caption = 'Build Notes'
             ClientHeight = 821
-            ClientWidth = 1064
+            ClientWidth = 1125
             object Memo1: TMemo
               Left = 0
               Height = 801
               Top = 20
-              Width = 1064
+              Width = 1125
               Align = alClient
               ParentColor = True
               TabOrder = 0
@@ -147,7 +147,7 @@ object Form1: TForm1
               Left = 0
               Height = 20
               Top = 0
-              Width = 1064
+              Width = 1125
               Align = alTop
               Caption = 'Notes about Build'
               TabOrder = 1
@@ -209,6 +209,11 @@ object Form1: TForm1
     object mnuBuildList: TMenuItem
       Caption = 'Build List'
       OnClick = mnuBuildListClick
+      object MenuItem1: TMenuItem
+        Caption = 'Build Sheet'
+        ShortCut = 121
+        OnClick = MenuItem1Click
+      end
       object mnuAddBuild: TMenuItem
         Caption = 'Create New Build'
         OnClick = mnuAddBuildClick
