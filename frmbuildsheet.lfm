@@ -155,6 +155,17 @@ object BuildSheet: TBuildSheet
         TabOrder = 3
         OnClick = btnExportFullClick
       end
+      object btnPrintHTML: TButton
+        Left = 399
+        Height = 28
+        Top = 11
+        Width = 105
+        Align = alLeft
+        BorderSpacing.Around = 10
+        Caption = 'Print HTML'
+        TabOrder = 4
+        OnClick = btnPrintHTMLClick
+      end
     end
     object Panel4: TPanel
       Left = 1

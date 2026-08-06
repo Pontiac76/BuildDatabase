@@ -133,6 +133,19 @@
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="frmBuildSheet"/>
       </Unit>
+      <Unit>
+        <Filename Value="framecomponentmanager.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="Frame3"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Frame"/>
+        <UnitName Value="frameComponentManager"/>
+      </Unit>
+      <Unit>
+        <Filename Value="frmphonephotoserver.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="frmPhonePhotoServer"/>
+      </Unit>
     </Units>
   </ProjectOptions>
   <CompilerOptions>

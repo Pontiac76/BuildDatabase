@@ -20,7 +20,7 @@ uses
   TabGrouping,
   ComponentDetails,
   //frmCamera,
-  uStreamToDB, frmBuildSheet;
+  uStreamToDB, frmBuildSheet, frameComponentManager;
 
   {$R *.res}
 

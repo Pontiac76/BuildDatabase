@@ -12,7 +12,7 @@ unit frmMain;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, Menus, ComCtrls, StdCtrls,
+  Classes, SysUtils, DateUtils, Forms, Controls, Graphics, Dialogs, Menus, ComCtrls, StdCtrls,
   ExtCtrls, LCLType, Buttons, ExtDlgs, RTTICtrls, SynEdit,
   RegExpr, SQLite3Conn, SQLite3, SQLDB, TabGrouping, ActnList, MiscFunctions;
 
@@ -27,6 +27,8 @@ type
     MainMenu1: TMainMenu;
     Memo1: TMemo;
     MenuItem1: TMenuItem;
+    mnuExportBuild: TMenuItem;
+    MenuItem4: TMenuItem;
     mnuPasteImage: TMenuItem;
     MenuItem11: TMenuItem;
     MenuItem12: TMenuItem;
@@ -54,12 +56,19 @@ type
     Panel3: TPanel;
     PopupMenu1: TPopupMenu;
     sbSystemBuildSpecs: TScrollBox;
+    memBuildSummary: TMemo;
+    pnlBuildSummaryButtons: TPanel;
+    btnBuildSummaryShort: TButton;
+    btnBuildSummaryLong: TButton;
+    btnBuildSummaryCopy: TButton;
     sbBuildImages: TScrollBox;
+    Separator1: TMenuItem;
     Separator2: TMenuItem;
     MenuItem8: TMenuItem;
     mnuAddBuild: TMenuItem;
     mnuDeleteBuild: TMenuItem;
     mnuBuildList: TMenuItem;
+    mnuShowOnlyAttachedHardware: TMenuItem;
     PageControl1: TPageControl;
     Splitter1: TSplitter;
     Splitter2: TSplitter;
@@ -73,18 +82,26 @@ type
     procedure FormCreate (Sender: TObject);
     procedure FormDestroy (Sender: TObject);
     procedure imagePopupClick (Sender: TObject);
+    procedure imagePopupViewClick (Sender: TObject);
     procedure lbBuildListClick (Sender: TObject);
 
     procedure lbBuildListMouseDown (Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: integer);
     procedure Memo1Exit (Sender: TObject);
     procedure MenuItem1Click (Sender: TObject);
+    procedure mnuExportBuildClick (Sender: TObject);
     procedure MenuItem4Click (Sender: TObject);
     procedure mnuExitClick (Sender: TObject);
     procedure MenuItem2Click (Sender: TObject);
     procedure mnuLoadImageClick (Sender: TObject);
     procedure mnuPasteImageClick (Sender: TObject);
+    procedure mnuPhonePhotoServerClick (Sender: TObject);
     procedure mnuResetManifestClick (Sender: TObject);
     procedure mnuAddToBuildManifestClick (Sender: TObject);
+    procedure mnuRenameBuildClick (Sender: TObject);
+    procedure mnuShowOnlyAttachedHardwareClick(Sender: TObject);
+    procedure btnBuildSummaryShortClick(Sender: TObject);
+    procedure btnBuildSummaryLongClick(Sender: TObject);
+    procedure btnBuildSummaryCopyClick(Sender: TObject);
     procedure MenuItem8Click (Sender: TObject);
     procedure mnuAddBuildClick (Sender: TObject);
     procedure mnuBuildListClick (Sender: TObject);
@@ -103,11 +120,17 @@ type
     procedure CreateTab (ComponentName: string);
 
     procedure RefreshBuildList;
-    procedure RenderComponentGroups;
+    procedure SetupBuildSummaryPane;
+    function BuildSummaryUseShortLabels: Boolean;
+    procedure SetBuildSummaryUseShortLabels(UseShortLabels: Boolean);
+    procedure WriteStructureIniBoolPreserveComments(const Section, Ident: string; Value: Boolean);
+    procedure PopulateBuildSummary(UseShortLabels: Boolean);
+    function BuildComponentLabel(const ComponentName: string; UseShortLabels: Boolean): string;
     procedure GenerateMenuSystem;
     procedure CleanupDynamicMenus;
     procedure LoadBuildDetails;
     procedure LoadDataIntoListBox (ListBox: TListBox; const TableName: string);
+    procedure ClearSpecsPane(const TabShortName: string);
 
     function SanitizeComponentName (const S: string): string;
     procedure AddSubMenu (ParentMenu: TMenuItem; const SubCaption: string; TagValue: integer);
@@ -126,11 +149,26 @@ type
     procedure PrepareIdleDeletes (ParentComponent: tControl);
     procedure PerformIdleDeletes;
 
+    procedure ExportSystem (BuildID: integer);
+
     // Image dealings
     procedure ImportImageForComponent (ImagePath: string; ComponentType: string; ComponentID: integer);
     procedure ReloadImagesOnScreen;
+    procedure RegenerateMissingThumbnails;
+    procedure GenerateThumbnailForImage(ImageID: Integer);
+    procedure InvalidateImageThumbnail(ImageID: Integer);
+    procedure ViewImageByID(ImageID: Integer);
+    procedure LoadPhotoIntoViewer(Viewer: TForm; ImageID: Integer);
+    procedure PhotoViewerKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure PhotoViewerPrevClick(Sender: TObject);
+    procedure PhotoViewerNextClick(Sender: TObject);
+    procedure PhotoViewerOpenEditorClick(Sender: TObject);
+    procedure PhotoViewerImportEditedClick(Sender: TObject);
+    procedure PhotoViewerMonitorTimer(Sender: TObject);
+    procedure ImportEditedPhotoFile(Viewer: TForm; ImageID: Integer; const TempFile: string; ShowDoneMessage: Boolean);
     function ConvertBMPClipboardToOptimalFormat (out FileFormat: string): TMemoryStream;
     procedure SaveStreamToDatabase (InStream: tMemoryStream; Ext: string);
+    procedure SavePhonePhotoUpload (PhotoStream: TMemoryStream; const OriginalFileName: string);
     function GetImageDimensions (Stream: TMemoryStream): TPoint;
     function ConvertToSupportedImage (out Stream: tMemoryStream; out ImgFmt: string): boolean;
   public
@@ -145,8 +183,8 @@ var
 implementation
 
 uses IniFiles, SimpleSQLite3, DatabaseManager, ComponentDetails,
-  Clipbrd, uStreamToDB, frmBuildSheet, DB, Math, Imaging, ImagingTypes, ImagingClasses,
-  ImagingJPEG, zlib, FPImage, FPReadBMP, FPWriteJPEG, FPWritePNG;
+  Clipbrd, frmBuildSheet, frmPhonePhotoServer, DB, Math, LCLIntf,
+  zlib ,Imaging, ImagingTypes, ImagingClasses,uStreamToDB ,ImagingJPEG, FPImage, FPReadBMP, FPWriteJPEG, FPWritePNG;
 
   {$R *.lfm}
 
@@ -154,6 +192,8 @@ uses IniFiles, SimpleSQLite3, DatabaseManager, ComponentDetails,
 var
   MenuToggleList: TStringList;
   IdleDeleteObjects: TList;
+  ViewerImageIDs: TStringList;
+  EditedPhotoWatchList: TStringList;
 
 const
   EditHeight = 25;
@@ -617,6 +657,56 @@ begin
   mnuDeleteBuild.Enabled := lbBuildList.ItemIndex <> -1;
 end;
 
+procedure TForm1.mnuRenameBuildClick (Sender: TObject);
+(*
+@AI:summary: Prompts for and updates the display name of the currently selected BuildList row.
+@AI:notes: Keeps lbBuildList as the source of selection truth; refreshes and reselects the renamed build by BuildID.
+*)
+var
+  BuildID: Integer;
+  NewName: string;
+  q: TSQLQuery;
+begin
+  if lbBuildList.ItemIndex < 0 then begin
+    Application.MessageBox('Select a build to rename first.', 'Rename Build', MB_OK or MB_ICONINFORMATION);
+    Exit;
+  end;
+
+  BuildID := O2I(lbBuildList.Items.Objects[lbBuildList.ItemIndex]);
+  NewName := GetBuildNameForID(BuildID);
+  if InputQuery('Rename Build', 'Build Name', NewName) then begin
+    NewName := Trim(NewName);
+    if NewName = '' then begin
+      Application.MessageBox('Build name cannot be blank.', 'Rename Build', MB_OK or MB_ICONERROR);
+      Exit;
+    end;
+
+    q := NewQuery(S3DB);
+    try
+      q.SQL.Text := 'update BuildList set BuildName=:BuildName where BuildID=:BuildID';
+      q.ParamByName('BuildName').AsString := NewName;
+      q.ParamByName('BuildID').AsInteger := BuildID;
+      q.ExecSQL;
+    finally
+      EndQuery(q);
+    end;
+
+    RefreshBuildList;
+    lbBuildList.ItemIndex := lbBuildList.Items.IndexOfObject(I2O(BuildID));
+    lbBuildListClick(nil);
+  end;
+end;
+
+procedure TForm1.mnuShowOnlyAttachedHardwareClick(Sender: TObject);
+(*
+@AI:summary: Toggles component tab list filtering so only hardware attached to the selected build is shown.
+@AI:notes: With no selected build, component tabs continue to show all hardware. Preference is stored in Structure.ini [CardOutput] so it survives restarts.
+*)
+begin
+  WriteStructureIniBoolPreserveComments('CardOutput', 'ShowOnlyAttachedHardware', mnuShowOnlyAttachedHardware.Checked);
+  PageControl1Change(nil);
+end;
+
 procedure TForm1.mnuDeleteBuildClick (Sender: TObject);
 (*
 @AI:summary: This function will ask the user to confirm if the build is to be deleted from the database.  This will release the associated parts back into the queue to be put into other builds.
@@ -638,6 +728,26 @@ begin
   end;
 end;
 
+procedure CleanupEditingDirectory;
+var
+  Dir: string;
+  SR: TSearchRec;
+begin
+  Dir := IncludeTrailingPathDelimiter(ExtractFilePath(Application.ExeName)) + 'Editing';
+  if not DirectoryExists(Dir) then Exit;
+  Dir := IncludeTrailingPathDelimiter(Dir);
+  if FindFirst(Dir + '*.*', faAnyFile, SR) = 0 then begin
+    try
+      repeat
+        if (SR.Name <> '.') and (SR.Name <> '..') and ((SR.Attr and faDirectory) = 0) then
+          DeleteFile(Dir + SR.Name);
+      until FindNext(SR) <> 0;
+    finally
+      FindClose(SR);
+    end;
+  end;
+end;
+
 procedure TForm1.FormCreate (Sender: TObject);
 (*
 @AI:summary: Initializes the form when it is created.  Establishes the run-time dynamically created tabs.  This also handles creating menu items for each selected tab so that each tab has its own Add/Edit/Delete functionality.
@@ -651,10 +761,40 @@ var
   MenuSubject: TMenuItem;
   MenuName: string;
   NewSheetName: string;
+  PhoneMenu: TMenuItem;
+  ViewPhotoMenu: TMenuItem;
+  RenameBuildMenu: TMenuItem;
+  Ini: TIniFile;
 begin
+  ViewPhotoMenu := TMenuItem.Create(PopupMenu1);
+  ViewPhotoMenu.Caption := 'View Photo';
+  ViewPhotoMenu.OnClick := @imagePopupViewClick;
+  PopupMenu1.Items.Insert(0, ViewPhotoMenu);
+
+  PhoneMenu := TMenuItem.Create(MainMenu1);
+  PhoneMenu.Caption := 'Phone Photo Server...';
+  PhoneMenu.OnClick := @mnuPhonePhotoServerClick;
+  MenuItem5.Insert(2, PhoneMenu);
+
+  RenameBuildMenu := TMenuItem.Create(mnuBuildList);
+  RenameBuildMenu.Caption := 'Rename Selected Build';
+  RenameBuildMenu.OnClick := @mnuRenameBuildClick;
+  mnuBuildList.Insert(3, RenameBuildMenu);
+
+  Ini := TIniFile.Create('Structure.ini');
+  try
+    mnuShowOnlyAttachedHardware.Checked := Ini.ReadBool('CardOutput', 'ShowOnlyAttachedHardware', False);
+  finally
+    Ini.Free;
+  end;
+
   x := 0;
   // AddObject(Name of Tab Sheet, tobject(Name of Menu))
   MenuToggleList := TStringList.Create;
+  ViewerImageIDs := TStringList.Create;
+  EditedPhotoWatchList := TStringList.Create;
+  CleanupEditingDirectory;
+  SetupBuildSummaryPane;
   GenerateMenuSystem;
   while x < MainMenu1.Items.Count - 1 do begin
     MenuSubject := TMenuItem(MainMenu1.Items[x]);
@@ -696,6 +836,8 @@ var
   HasSelection: boolean;
 begin
   Memo1.Enabled := lbBuildList.ItemIndex <> -1;
+  mnuExportBuild.Enabled := Memo1.Enabled;
+
   if (lbBuildList.ItemIndex = -1) and (Memo1.Text <> '') then begin
     Memo1.Text := '';
   end;
@@ -761,6 +903,8 @@ begin
   // Clean up everything in the tab sheets
 
   MenuToggleList.Free;
+  ViewerImageIDs.Free;
+  EditedPhotoWatchList.Free;
 
   DeleteChildObjects(TComponent(sbSystemBuildSpecs));
   CleanupDynamicMenus;
@@ -784,6 +928,12 @@ begin
 
 end;
 
+procedure TForm1.imagePopupViewClick (Sender: TObject);
+begin
+  if PopupMenu1.PopupComponent is TImage then
+    ViewImageByID(TImage(PopupMenu1.PopupComponent).Tag);
+end;
+
 
 
 procedure TForm1.lbBuildListClick (Sender: TObject);
@@ -793,11 +943,9 @@ procedure TForm1.lbBuildListClick (Sender: TObject);
 @AI:returns:
 *)
 begin
-  sbSystemBuildSpecs.BeginUpdateBounds;
-  DeleteChildObjects(TComponent(sbSystemBuildSpecs));
-  RenderComponentGroups;
-  sbSystemBuildSpecs.EndUpdateBounds;
+  PopulateBuildSummary(BuildSummaryUseShortLabels);
   LoadBuildDetails;
+  PageControl1Change(nil);
   ReloadImagesOnScreen;
 end;
 
@@ -832,14 +980,50 @@ procedure TForm1.MenuItem1Click (Sender: TObject);
 begin
   BuildSheet.btnClearSheet.Click;
   if BuildSheet.ShowModal = mrOk then begin
-    PageControl1.PageIndex:=0;
+    PageControl1.PageIndex := 0;
     MenuItem8Click(nil);
   end;
+end;
+
+procedure TForm1.mnuExportBuildClick (Sender: TObject);
+begin
+  ExportSystem(o2i(lbBuildList.Items.Objects[lbBuildList.ItemIndex]));
 end;
 
 procedure TForm1.MenuItem4Click (Sender: TObject);
 begin
 
+end;
+
+procedure TForm1.mnuPhonePhotoServerClick (Sender: TObject);
+var
+  ActiveLB: TListBox;
+  ActivePage: TTabSheet;
+  TargetType, TargetTitle: string;
+  TargetID: Integer;
+begin
+  ActivePage := PageControl1.ActivePage;
+  ActiveLB := nil;
+  TargetType := '';
+  TargetTitle := '';
+  TargetID := -1;
+
+  if ActivePage = tsBuildSheet then begin
+    ActiveLB := lbBuildList;
+    TargetType := 'Build List';
+  end else begin
+    TargetType := SafeComponentName(ActivePage.Caption);
+    ActiveLB := TListBox(FindAnyComponent(ActivePage, 'lb__' + TargetType + '__List'));
+  end;
+
+  if (ActiveLB = nil) or (ActiveLB.ItemIndex < 0) then begin
+    Application.MessageBox('Select a build or component before starting the phone photo server.', 'No Photo Target', MB_OK or MB_ICONINFORMATION);
+    Exit;
+  end;
+
+  TargetID := O2I(ActiveLB.Items.Objects[ActiveLB.ItemIndex]);
+  TargetTitle := ActiveLB.Items[ActiveLB.ItemIndex];
+  ShowPhonePhotoServer(TargetType, TargetID, TargetTitle, @SavePhonePhotoUpload);
 end;
 
 procedure TForm1.mnuExitClick (Sender: TObject);
@@ -853,6 +1037,22 @@ begin
   //CameraForm.ShowModal;
 end;
 
+
+procedure ResizeImageMax (var Img: TImageData; MaxWidth, MaxHeight: integer);
+var
+  Scale: single;
+  NewWidth, NewHeight: integer;
+begin
+  if (Img.Width <= MaxWidth) and (Img.Height <= MaxHeight) then begin
+    Exit;
+  end;
+
+  Scale := Min(MaxWidth / Img.Width, MaxHeight / Img.Height);
+  NewWidth := Round(Img.Width * Scale);
+  NewHeight := Round(Img.Height * Scale);
+
+  ResizeImage(Img, NewWidth, NewHeight, rfLanczos);
+end;
 
 procedure TForm1.ImportImageForComponent (ImagePath: string; ComponentType: string; ComponentID: integer);
 var
@@ -1060,7 +1260,7 @@ begin
     );
 end;
 
-procedure LoadImageBlobIntoControl (var q: TSQLQuery; var ImageControl: TImage);
+procedure LoadImageBlobFieldIntoControl(var q: TSQLQuery; const BlobFieldName: string; var ImageControl: TImage);
 var
   CompressedStream, TrimmedStream, DecompressedStream: TMemoryStream;
   Img: TImageData;
@@ -1071,30 +1271,24 @@ begin
   DecompressedStream := nil;
 
   try
-    TBlobField(q.FieldByName('RawData')).SaveToStream(CompressedStream);
+    if q.FieldByName(BlobFieldName).IsNull then Exit;
+    TBlobField(q.FieldByName(BlobFieldName)).SaveToStream(CompressedStream);
     CompressedStream.Position := 0;
-    CompressedStream.SaveToFile('r:\Compressed' + q.FieldByName('ImageID').AsString + '.dat');
 
     if CompressedStream.Size > SizeOf(QWord) then begin
-      // Read footer
       CompressedStream.Position := CompressedStream.Size - SizeOf(QWord);
       OriginalSize := CompressedStream.ReadQWord;
 
-      // Extract compressed body
       TrimmedStream := TMemoryStream.Create;
       CompressedStream.Position := 0;
-      TrimmedStream.LoadFromStream(CompressedStream);
-      //      TrimmedStream.CopyFrom(CompressedStream, CompressedStream.Size - SizeOf(QWord));
+      TrimmedStream.CopyFrom(CompressedStream, CompressedStream.Size - SizeOf(QWord));
       TrimmedStream.Position := 0;
 
-      // Decompress
       DecompressedStream := DecompressZlib(TrimmedStream, OriginalSize);
-      DecompressedStream.SaveToFile('R:\Test' + IntToStr(q.FieldByName('ImageID').AsInteger) + '.jpg');
     end else begin
       DecompressedStream := TMemoryStream.Create;
-    end; // Empty fallback
+    end;
 
-    // Validate output
     if DecompressedStream.Size > 0 then begin
       DecompressedStream.Position := 0;
       LoadImageFromStream(DecompressedStream, Img);
@@ -1110,6 +1304,479 @@ begin
   end;
 end;
 
+procedure LoadImageBlobIntoControl (var q: TSQLQuery; var ImageControl: TImage);
+begin
+  if (q.FindField('Thumbnail') <> nil) and (not q.FieldByName('Thumbnail').IsNull) then
+    LoadImageBlobFieldIntoControl(q, 'Thumbnail', ImageControl)
+  else
+    LoadImageBlobFieldIntoControl(q, 'RawData', ImageControl);
+end;
+
+
+procedure TForm1.LoadPhotoIntoViewer(Viewer: TForm; ImageID: Integer);
+(*
+@AI:summary: Loads a full-size image from ComponentImages.RawData into the modal photo viewer.
+@AI:notes: Uses DbToStream for compressed BLOB reads. Updates viewer caption, current ImageID tag, and previous/next button enabled state.
+*)
+var
+  Info: TWhatINeedToKnow;
+  Stream: TMemoryStream;
+  Img: TImage;
+  BtnPrev, BtnNext: TButton;
+  q: TSQLQuery;
+  CaptionText: string;
+  Index: Integer;
+begin
+  CaptionText := 'Photo ' + IntToStr(ImageID);
+  q := NewQuery(S3DB);
+  try
+    q.SQL.Text := 'select FileName, OriginalFileName from ComponentImages where ImageID=:ImageID';
+    q.ParamByName('ImageID').AsInteger := ImageID;
+    q.Open;
+    if not q.EOF then begin
+      if q.FieldByName('OriginalFileName').AsString <> '' then
+        CaptionText := q.FieldByName('OriginalFileName').AsString
+      else
+        CaptionText := q.FieldByName('FileName').AsString;
+    end;
+  finally
+    EndQuery(q);
+  end;
+
+  Info := TWhatINeedToKnow.Create;
+  Stream := nil;
+  try
+    Info.Database := S3DB;
+    Info.TableToWorkWith := 'ComponentImages';
+    Info.FieldForBlob := 'RawData';
+    Info.FieldForID := 'ImageID';
+    Info.RecordID := ImageID;
+    Info.CompressedContent := True;
+    DbToStream(Info, Stream);
+    if (Stream = nil) or (Stream.Size = 0) then begin
+      Application.MessageBox('Unable to load image from database.', 'View Photo', MB_OK or MB_ICONEXCLAMATION);
+      Exit;
+    end;
+    Stream.Position := 0;
+
+    Img := TImage(Viewer.FindComponent('ViewerImage'));
+    if Assigned(Img) then begin
+      Img.Picture.Clear;
+      Img.Picture.LoadFromStream(Stream);
+      Img.Tag := ImageID;
+    end;
+
+    Index := ViewerImageIDs.IndexOf(IntToStr(ImageID));
+    Viewer.Tag := Index;
+    Viewer.Caption := CaptionText + '  (' + IntToStr(Index + 1) + ' of ' + IntToStr(ViewerImageIDs.Count) + ')';
+
+    BtnPrev := TButton(Viewer.FindComponent('btnViewerPrev'));
+    BtnNext := TButton(Viewer.FindComponent('btnViewerNext'));
+    if Assigned(BtnPrev) then BtnPrev.Enabled := Index > 0;
+    if Assigned(BtnNext) then BtnNext.Enabled := (Index >= 0) and (Index < ViewerImageIDs.Count - 1);
+  finally
+    Stream.Free;
+    Info.Free;
+  end;
+end;
+
+procedure TForm1.PhotoViewerKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+(*
+@AI:summary: Handles keyboard navigation for the modal photo viewer.
+@AI:notes: ESC closes, left arrow loads previous visible thumbnail image, right arrow loads next visible thumbnail image.
+*)
+begin
+  if Key = VK_ESCAPE then begin
+    TForm(Sender).Close;
+    Key := 0;
+  end else if Key = VK_LEFT then begin
+    PhotoViewerPrevClick(Sender);
+    Key := 0;
+  end else if Key = VK_RIGHT then begin
+    PhotoViewerNextClick(Sender);
+    Key := 0;
+  end;
+end;
+
+procedure TForm1.PhotoViewerPrevClick(Sender: TObject);
+var
+  Viewer: TForm;
+begin
+  if Sender is TForm then Viewer := TForm(Sender) else Viewer := TForm(TControl(Sender).Owner);
+  if Viewer.Tag > 0 then
+    LoadPhotoIntoViewer(Viewer, StrToIntDef(ViewerImageIDs[Viewer.Tag - 1], -1));
+end;
+
+procedure TForm1.PhotoViewerNextClick(Sender: TObject);
+var
+  Viewer: TForm;
+begin
+  if Sender is TForm then Viewer := TForm(Sender) else Viewer := TForm(TControl(Sender).Owner);
+  if Viewer.Tag < ViewerImageIDs.Count - 1 then
+    LoadPhotoIntoViewer(Viewer, StrToIntDef(ViewerImageIDs[Viewer.Tag + 1], -1));
+end;
+
+function EditedPhotoPath(ImageID: Integer): string;
+begin
+  Result := IncludeTrailingPathDelimiter(ExtractFilePath(Application.ExeName)) + 'Editing';
+  if not DirectoryExists(Result) then
+    ForceDirectories(Result);
+  Result := IncludeTrailingPathDelimiter(Result) + 'BuildDatabase_Image_' + IntToStr(ImageID) + '.jpg';
+end;
+
+procedure TForm1.PhotoViewerOpenEditorClick(Sender: TObject);
+(*
+@AI:summary: Exports the current image to the Editing directory and opens it with the OS default image editor.
+@AI:notes: Adds/updates EditedPhotoWatchList so the viewer timer can auto-import saved edits after file timestamp changes settle.
+*)
+var
+  Viewer: TForm;
+  Img: TImage;
+  ImageID: Integer;
+  Info: TWhatINeedToKnow;
+  Stream: TMemoryStream;
+  TempFile: string;
+begin
+  Viewer := TForm(TControl(Sender).Owner);
+  Img := TImage(Viewer.FindComponent('ViewerImage'));
+  if not Assigned(Img) then Exit;
+  ImageID := Img.Tag;
+
+  Info := TWhatINeedToKnow.Create;
+  Stream := nil;
+  try
+    Info.Database := S3DB;
+    Info.TableToWorkWith := 'ComponentImages';
+    Info.FieldForBlob := 'RawData';
+    Info.FieldForID := 'ImageID';
+    Info.RecordID := ImageID;
+    Info.CompressedContent := True;
+    DbToStream(Info, Stream);
+    if Assigned(Stream) then begin
+      TempFile := EditedPhotoPath(ImageID);
+      Stream.SaveToFile(TempFile);
+      EditedPhotoWatchList.Values[TempFile] := IntToStr(ImageID) + '|' + IntToStr(FileAge(TempFile));
+      OpenDocument(TempFile);
+    end;
+  finally
+    Stream.Free;
+    Info.Free;
+  end;
+end;
+
+procedure TForm1.ImportEditedPhotoFile(Viewer: TForm; ImageID: Integer; const TempFile: string; ShowDoneMessage: Boolean);
+var
+  Sql: string;
+  Stream: TMemoryStream;
+  Info: TWhatINeedToKnow;
+  Dims: TPoint;
+  q: TSQLQuery;
+begin
+  if not FileExists(TempFile) then begin
+    if ShowDoneMessage then
+      Application.MessageBox(PChar('Edited file not found:' + LineEnding + TempFile), 'Import Edited Photo', MB_OK or MB_ICONEXCLAMATION);
+    Exit;
+  end;
+
+  Stream := TMemoryStream.Create;
+  Info := TWhatINeedToKnow.Create;
+  try
+    Stream.LoadFromFile(TempFile);
+    Stream.Position := 0;
+    Dims := GetImageDimensions(Stream);
+    Stream.Position := 0;
+
+    Info.Database := S3DB;
+    Info.TableToWorkWith := 'ComponentImages';
+    Info.FieldForBlob := 'RawData';
+    Info.FieldForID := 'ImageID';
+    Info.RecordID := ImageID;
+    Info.CompressedContent := True;
+    StreamToDB(Info, Stream);
+    InvalidateImageThumbnail(ImageID);
+
+    Sql := 'update ComponentImages set Width=:Width, Height=:Height, Format=:Format, OriginalFileName=:OriginalFileName where ImageID=:ImageID';
+    q := NewQuery(S3DB);
+    try
+      q.SQL.Text := Sql;
+      q.ParamByName('ImageID').AsInteger := ImageID;
+      q.ParamByName('Width').AsInteger := Dims.X;
+      q.ParamByName('Height').AsInteger := Dims.Y;
+      q.ParamByName('Format').AsString := 'JPG';
+      q.ParamByName('OriginalFileName').AsString := ExtractFileName(TempFile);
+      q.ExecSQL;
+    finally
+      EndQuery(q);
+    end;
+
+    EditedPhotoWatchList.Values[TempFile] := IntToStr(ImageID) + '|' + IntToStr(FileAge(TempFile));
+    if Assigned(Viewer) and (Viewer.FindComponent('ViewerImage') <> nil) and (TImage(Viewer.FindComponent('ViewerImage')).Tag = ImageID) then
+      LoadPhotoIntoViewer(Viewer, ImageID);
+    ReloadImagesOnScreen;
+    if ShowDoneMessage then
+      Application.MessageBox('Edited photo imported back into the database.', 'Import Edited Photo', MB_OK or MB_ICONINFORMATION);
+  finally
+    Info.Free;
+    Stream.Free;
+  end;
+end;
+
+procedure TForm1.PhotoViewerImportEditedClick(Sender: TObject);
+var
+  Viewer: TForm;
+  Img: TImage;
+  ImageID: Integer;
+begin
+  Viewer := TForm(TControl(Sender).Owner);
+  Img := TImage(Viewer.FindComponent('ViewerImage'));
+  if not Assigned(Img) then Exit;
+  ImageID := Img.Tag;
+  ImportEditedPhotoFile(Viewer, ImageID, EditedPhotoPath(ImageID), True);
+end;
+
+procedure TForm1.PhotoViewerMonitorTimer(Sender: TObject);
+(*
+@AI:summary: Polls the global edited-photo watch list while a viewer is open and imports changed files after a two second settle period.
+@AI:notes: Watches all session-exported edit files, not just the currently displayed image. Timer ownership remains with the viewer form.
+*)
+var
+  Timer: TTimer;
+  Viewer: TForm;
+  i, SepPos, ImageID, OldAge, NewAge: Integer;
+  Path, Value: string;
+begin
+  Timer := TTimer(Sender);
+  Viewer := TForm(Timer.Owner);
+  for i := 0 to EditedPhotoWatchList.Count - 1 do begin
+    Path := EditedPhotoWatchList.Names[i];
+    Value := EditedPhotoWatchList.ValueFromIndex[i];
+    SepPos := Pos('|', Value);
+    if (Path = '') or (SepPos = 0) or (not FileExists(Path)) then Continue;
+    ImageID := StrToIntDef(Copy(Value, 1, SepPos - 1), -1);
+    OldAge := StrToIntDef(Copy(Value, SepPos + 1, MaxInt), -1);
+    NewAge := FileAge(Path);
+    if (ImageID > 0) and (NewAge <> -1) and (NewAge <> OldAge) and (SecondsBetween(Now, FileDateToDateTime(NewAge)) >= 2) then begin
+      Timer.Enabled := False;
+      try
+        ImportEditedPhotoFile(Viewer, ImageID, Path, False);
+      finally
+        Timer.Enabled := True;
+      end;
+      Break;
+    end;
+  end;
+end;
+
+procedure TForm1.ViewImageByID(ImageID: Integer);
+var
+  Viewer: TForm;
+  Panel: TPanel;
+  Img: TImage;
+  BtnPrev, BtnNext, BtnEditor, BtnImportEdited, BtnClose: TButton;
+  MonitorTimer: TTimer;
+  i, Idx: Integer;
+  ControlImage: TImage;
+begin
+  ViewerImageIDs.Clear;
+  for i := 0 to sbBuildImages.ComponentCount - 1 do begin
+    if sbBuildImages.Components[i] is TPanel then begin
+      ControlImage := TImage(FindAnyComponent(TPanel(sbBuildImages.Components[i]), 'img' + SafeComponentName(TPanel(sbBuildImages.Components[i]).Name)));
+      if Assigned(ControlImage) then
+        ViewerImageIDs.Add(IntToStr(ControlImage.Tag));
+    end;
+  end;
+  if ViewerImageIDs.IndexOf(IntToStr(ImageID)) = -1 then
+    ViewerImageIDs.Add(IntToStr(ImageID));
+
+  Viewer := TForm.Create(Self);
+  try
+    Viewer.Position := poScreenCenter;
+    Viewer.Width := 1000;
+    Viewer.Height := 800;
+    Viewer.KeyPreview := True;
+    Viewer.OnKeyDown := @PhotoViewerKeyDown;
+
+    Panel := TPanel.Create(Viewer);
+    Panel.Parent := Viewer;
+    Panel.Align := alBottom;
+    Panel.Height := 44;
+    Panel.BevelOuter := bvNone;
+
+    BtnPrev := TButton.Create(Viewer);
+    BtnPrev.Name := 'btnViewerPrev';
+    BtnPrev.Parent := Panel;
+    BtnPrev.Left := 8;
+    BtnPrev.Top := 8;
+    BtnPrev.Width := 90;
+    BtnPrev.Caption := '< Previous';
+    BtnPrev.OnClick := @PhotoViewerPrevClick;
+
+    BtnNext := TButton.Create(Viewer);
+    BtnNext.Name := 'btnViewerNext';
+    BtnNext.Parent := Panel;
+    BtnNext.Left := 106;
+    BtnNext.Top := 8;
+    BtnNext.Width := 90;
+    BtnNext.Caption := 'Next >';
+    BtnNext.OnClick := @PhotoViewerNextClick;
+
+    BtnEditor := TButton.Create(Viewer);
+    BtnEditor.Parent := Panel;
+    BtnEditor.Left := 212;
+    BtnEditor.Top := 8;
+    BtnEditor.Width := 120;
+    BtnEditor.Caption := 'Open in Editor';
+    BtnEditor.OnClick := @PhotoViewerOpenEditorClick;
+
+    BtnImportEdited := TButton.Create(Viewer);
+    BtnImportEdited.Parent := Panel;
+    BtnImportEdited.Left := 340;
+    BtnImportEdited.Top := 8;
+    BtnImportEdited.Width := 130;
+    BtnImportEdited.Caption := 'Import Edited';
+    BtnImportEdited.OnClick := @PhotoViewerImportEditedClick;
+
+    BtnClose := TButton.Create(Viewer);
+    BtnClose.Parent := Panel;
+    BtnClose.Left := 486;
+    BtnClose.Top := 8;
+    BtnClose.Width := 90;
+    BtnClose.Caption := 'Close';
+    BtnClose.ModalResult := mrClose;
+
+    MonitorTimer := TTimer.Create(Viewer);
+    MonitorTimer.Interval := 500;
+    MonitorTimer.Enabled := True;
+    MonitorTimer.OnTimer := @PhotoViewerMonitorTimer;
+
+    Img := TImage.Create(Viewer);
+    Img.Name := 'ViewerImage';
+    Img.Parent := Viewer;
+    Img.Align := alClient;
+    Img.AutoSize := False;
+    Img.Stretch := True;
+    Img.Proportional := True;
+    Img.Center := True;
+
+    Idx := ViewerImageIDs.IndexOf(IntToStr(ImageID));
+    Viewer.Tag := Idx;
+    LoadPhotoIntoViewer(Viewer, ImageID);
+    Viewer.ShowModal;
+  finally
+    Viewer.Free;
+  end;
+end;
+
+procedure TForm1.InvalidateImageThumbnail(ImageID: Integer);
+(*
+@AI:summary: Marks a ComponentImages thumbnail stale by setting Thumbnail to NULL for one ImageID.
+@AI:notes: Called after RawData is replaced so RegenerateMissingThumbnails can rebuild only changed thumbnails.
+*)
+var
+  q: TSQLQuery;
+begin
+  q := NewQuery(S3DB);
+  try
+    q.SQL.Text := 'update ComponentImages set Thumbnail = null where ImageID = :ImageID';
+    q.ParamByName('ImageID').AsInteger := ImageID;
+    q.ExecSQL;
+  finally
+    EndQuery(q);
+  end;
+end;
+
+procedure TForm1.GenerateThumbnailForImage(ImageID: Integer);
+(*
+@AI:summary: Generates a small 128x128-max PNG thumbnail from ComponentImages.RawData and stores it in ComponentImages.Thumbnail.
+@AI:notes: Thumbnail BLOBs are compressed through StreamToDB just like RawData. Rendering code prefers Thumbnail over RawData for speed.
+*)
+var
+  Info: TWhatINeedToKnow;
+  SrcStream, ThumbStream: TMemoryStream;
+  Pic: TPicture;
+  Bmp: TBitmap;
+  Png: TPortableNetworkGraphic;
+  TargetW, TargetH: Integer;
+  Ratio: Double;
+begin
+  if ImageID < 1 then Exit;
+  Info := TWhatINeedToKnow.Create;
+  SrcStream := nil;
+  ThumbStream := TMemoryStream.Create;
+  Pic := TPicture.Create;
+  Bmp := TBitmap.Create;
+  Png := TPortableNetworkGraphic.Create;
+  try
+    Info.Database := S3DB;
+    Info.TableToWorkWith := 'ComponentImages';
+    Info.FieldForBlob := 'RawData';
+    Info.FieldForID := 'ImageID';
+    Info.RecordID := ImageID;
+    Info.CompressedContent := True;
+    DbToStream(Info, SrcStream);
+    if (SrcStream = nil) or (SrcStream.Size = 0) then Exit;
+
+    SrcStream.Position := 0;
+    Pic.LoadFromStream(SrcStream);
+    if (Pic.Width <= 0) or (Pic.Height <= 0) then Exit;
+
+    Ratio := Min(128 / Pic.Width, 128 / Pic.Height);
+    if Ratio > 1 then Ratio := 1;
+    TargetW := Max(1, Round(Pic.Width * Ratio));
+    TargetH := Max(1, Round(Pic.Height * Ratio));
+
+    Bmp.SetSize(TargetW, TargetH);
+    Bmp.Canvas.Brush.Color := clBlack;
+    Bmp.Canvas.FillRect(0, 0, TargetW, TargetH);
+    Bmp.Canvas.StretchDraw(Rect(0, 0, TargetW, TargetH), Pic.Graphic);
+
+    Png.Assign(Bmp);
+    Png.SaveToStream(ThumbStream);
+    ThumbStream.Position := 0;
+
+    Info.FieldForBlob := 'Thumbnail';
+    Info.RecordID := ImageID;
+    StreamToDB(Info, ThumbStream);
+  finally
+    SrcStream.Free;
+    ThumbStream.Free;
+    Png.Free;
+    Bmp.Free;
+    Pic.Free;
+    Info.Free;
+  end;
+end;
+
+procedure TForm1.RegenerateMissingThumbnails;
+(*
+@AI:summary: Finds all ComponentImages rows with Thumbnail IS NULL and regenerates thumbnails in one pass.
+@AI:notes: This supports bulk phone uploads and edited-image imports by batch-filling stale/missing thumbnails before thumbnail strip rendering.
+*)
+var
+  q: TSQLQuery;
+  IDs: TStringList;
+  i: Integer;
+begin
+  IDs := TStringList.Create;
+  q := NewQuery(S3DB);
+  try
+    q.SQL.Text := 'select ImageID from ComponentImages where Thumbnail is null order by ImageID';
+    q.Open;
+    while not q.EOF do begin
+      IDs.Add(q.FieldByName('ImageID').AsString);
+      q.Next;
+    end;
+  finally
+    EndQuery(q);
+  end;
+
+  try
+    for i := 0 to IDs.Count - 1 do
+      GenerateThumbnailForImage(StrToIntDef(IDs[i], -1));
+  finally
+    IDs.Free;
+  end;
+end;
 
 procedure TForm1.ReloadImagesOnScreen;
 const
@@ -1130,6 +1797,7 @@ var
   PropX, PropY: integer;
   ActiveLB: TListBox;
 begin
+  RegenerateMissingThumbnails;
   //DeleteChildObjects(sbBuildImages);
   PrepareIdleDeletes(sbBuildImages);
   if PageControl1.ActivePage = tsBuildSheet then begin
@@ -1308,6 +1976,75 @@ end;
 procedure TForm1.SaveStreamToDatabase (InStream: tMemoryStream; Ext: string);
 begin
   InStream.SaveToFile('r:\Test.' + Ext);
+end;
+
+procedure TForm1.SavePhonePhotoUpload (PhotoStream: TMemoryStream; const OriginalFileName: string);
+(*
+@AI:summary: Saves an uploaded phone/browser image stream into ComponentImages for the current locked/selected build or component target.
+@AI:notes: Inserts RawData compressed BLOB, stores metadata, and leaves Thumbnail null for later batch regeneration.
+*)
+var
+  ActiveLB: TListBox;
+  ActivePage: TTabSheet;
+  ComponentType, FileExt, Sql: string;
+  ComponentID: Integer;
+  Info: TWhatINeedToKnow;
+  Dims: TPoint;
+  q: TSQLQuery;
+begin
+  ActivePage := PageControl1.ActivePage;
+  if ActivePage = tsBuildSheet then begin
+    ActiveLB := lbBuildList;
+    ComponentType := 'Build List';
+  end else begin
+    ComponentType := SafeComponentName(ActivePage.Caption);
+    ActiveLB := TListBox(FindAnyComponent(ActivePage, 'lb__' + ComponentType + '__List'));
+  end;
+
+  if (ActiveLB = nil) or (ActiveLB.ItemIndex < 0) then begin
+    raise Exception.Create('Phone photo upload received but there is no selected target.');
+  end;
+
+  ComponentID := O2I(ActiveLB.Items.Objects[ActiveLB.ItemIndex]);
+  FileExt := LowerCase(ExtractFileExt(OriginalFileName));
+  if (FileExt <> '') and (FileExt[1] = '.') then Delete(FileExt, 1, 1);
+  if FileExt = '' then FileExt := 'jpg';
+
+  PhotoStream.Position := 0;
+  Dims := GetImageDimensions(PhotoStream);
+  PhotoStream.Position := 0;
+
+  Info := TWhatINeedToKnow.Create;
+  try
+    Info.Database := S3DB;
+    Info.TableToWorkWith := 'ComponentImages';
+    Info.FieldForBlob := 'RawData';
+    Info.FieldForID := 'ImageID';
+    Info.RecordID := -1;
+    Info.CompressedContent := True;
+    StreamToDB(Info, PhotoStream);
+
+    Sql := 'update ComponentImages set ComponentType=:CompType, ComponentID=:CompID, Filename=:FileName, Width=:Width, Height=:Height, Format=:Format, OriginalFileName=:OriginalFileName where ImageID=:ImageID';
+    q := NewQuery(S3DB);
+    try
+      q.SQL.Text := Sql;
+      q.ParamByName('ImageID').AsInteger := Info.RecordID;
+      q.ParamByName('CompType').AsString := ComponentType;
+      q.ParamByName('CompID').AsInteger := ComponentID;
+      q.ParamByName('FileName').AsString := 'Phone_' + ComponentType + '_' + IntToStr(Info.RecordID) + '.' + FileExt;
+      q.ParamByName('Format').AsString := UpperCase(FileExt);
+      q.ParamByName('Width').AsInteger := Dims.X;
+      q.ParamByName('Height').AsInteger := Dims.Y;
+      q.ParamByName('OriginalFileName').AsString := OriginalFileName;
+      q.ExecSQL;
+    finally
+      EndQuery(q);
+    end;
+  finally
+    Info.Free;
+  end;
+
+  ReloadImagesOnScreen;
 end;
 
 function TForm1.GetImageDimensions (Stream: TMemoryStream): TPoint;
@@ -1717,6 +2454,149 @@ begin
   IdleDeleteObjects.Clear;
 end;
 
+type
+  tCompDetails = class
+    Component: string;
+    FullCName: String;
+    ComponentID: integer;
+    OrderID: integer;
+  end;
+
+procedure TForm1.ExportSystem (BuildID: integer);
+var
+  x:integer;
+  q: TSQLQuery;
+  BuildList: TStringList;
+  sql: string;
+  Order: TStringList;
+  ini: TIniFile;
+  CurrentOrderID: integer;
+  OrderPicker: TList;
+  CompDetail: tCompDetails;
+  mdFile: TStringList;
+  mdLine:string;
+  BuildName: string;
+  BuildLine:string;
+  LastComponentTitle:string;
+  LongestName:integer;
+  TargetPath:string;
+const
+  ZolaPath='Z:\home\stephen\git\pontiac76.github.io_zola\content\retro\';
+begin
+  BuildList := TStringList.Create;
+  Order := TStringList.Create;
+  mdFile := TStringList.Create;
+
+  OrderPicker := TList.Create;
+  ini := TIniFile.Create('structure.ini');
+  ini.ReadSection('Order', Order);
+  ini.Free;
+  LongestName:=0;
+  for x:=0 to Order.Count-1 do
+    if LongestName<Length(order[x]) then
+      LongestName:=length(order[x]);
+
+  // Get the build name
+  q := NewQuery(s3db);
+  q.SQL.Text := 'select BuildName from BuildList where BuildID=:BuildID';
+  q.ParamByName('BuildID').AsInteger := BuildID;
+  q.Open;
+  BuildName := q.FieldByName('BuildName').AsString;
+  EndQuery(q);
+
+  // Run through the BuildComponents and find what components belong to the selected build
+  for CurrentOrderID := 0 to Order.Count - 1 do begin
+    q := NewQuery(S3DB);
+    q.SQL.Text := 'select Component,ComponentID from BuildComponents where BuildID=:BuildID and Component=:Comp order by ComponentID';
+    q.Params.ParamByName('BuildID').AsInteger := BuildID;
+    q.Params.ParamByName('Comp').AsString := SafeComponentName(Order[CurrentOrderID]);
+    q.Open;
+    while not q.EOF do begin
+      CompDetail := tCompDetails.Create;
+      CompDetail.Component := q.FieldByName('Component').AsString;
+      CompDetail.FullCName:=Order[CurrentOrderID];
+      CompDetail.ComponentID := q.FieldByName('ComponentID').AsInteger;
+      CompDetail.OrderID := CurrentOrderID;
+      OrderPicker.Add(CompDetail);
+      q.Next;
+    end;
+    EndQuery(q);
+  end;
+
+  // Since we can't have to SQL Queries going with this library without entertaining chaos engines, we'll go through the previous list
+  //    and fill in the BuildList with text to throw to the MD file
+  for CurrentOrderID := 0 to OrderPicker.Count - 1 do begin
+    CompDetail := tCompDetails(OrderPicker[CurrentOrderID]);
+    q := NewQuery(s3db);
+    q.SQL.Text := 'select Title from Device_' + SafeComponentName(CompDetail.Component) + ' where DeviceID=:DeviceID';
+    q.ParamByName('DeviceID').AsInteger := CompDetail.ComponentID;
+    q.Open;
+    if q.RecordCount > 0 then begin
+      BuildList.Add(CompDetail.FullCName + ':' + q.FieldByName('Title').AsString);
+    end;
+    EndQuery(q);
+  end;
+
+  // Now let's get the MD file prepped, starting with the name of the system
+  mdFile.add('# Component List');
+  LastComponentTitle:='';
+  for CurrentOrderID := 0 to BuildList.Count - 1 do begin
+    mdLine:='';
+    BuildLine:=BuildList[CurrentOrderID];
+    if LastComponentTitle<>copy(BuildLine,1,pos(':',BuildLine)) then begin
+      LastComponentTitle:=copy(BuildLine,1,pos(':',BuildLine));
+      if mdFile.Count>0 then
+        mdFile.add('');
+      // replace space with &nbsp; for HTML output
+      mdLine:=copy(LastComponentTitle+Space(LongestName),1,LongestName+1);
+      mdLine:=StringReplace(mdLine,' ','&nbsp;',[rfReplaceAll]);
+    end else begin
+      mdLine:=Space(LongestName+1);
+      mdLine:=StringReplace(mdLine,' ','&nbsp;',[rfReplaceAll]);
+    end;
+    mdLine:=mdLine+copy(BuildLine,pos(':',BuildLine)+1,maxlongint);
+    mdFile.Add(mdLine+'<br>');
+  end;
+
+(* How to handle Zola
+  For now, everything is built in WSL.
+  Mount Z: over to the Debian instance.
+  These files and directories are going to be hard coded (For now) to write to z:\home\stephen\git\pontiac76.github.io\
+  Z:\home\stephen\git\pontiac76.github.io_zola\content\retro
+  We won't touch the _index.md file in here.  This can be used as an intro to the retro equipment.
+
+  We'll create make sure a safely named directory exists (Based off the build name)
+  We then create an _index.md file in there, and provide the headers required
+  - Need to figure out how to display the items in order, for now, whatever, let's get this done -- MVP)
+  We then create a "PartsList.md" file that contains the above content.
+  We'll figure out the image stuff later, probably putting it into {nameofbuild}/images and link them
+  We do NOT want to delete anything in an already existing directory, since there could be files made with timestamps for periods of history that should be documented
+
+*)
+
+  TargetPath:=ZolaPath+SafeComponentName(BuildName,True);
+  if not (DirectoryExists(TargetPath)) then
+    MkDir(TargetPath);
+  mdFile.insert(0,'+++');
+  mdFile.insert(1,'title="'+BuildName+' - Parts List"');
+  mdFile.insert(2,'date='+FormatDateTime('yyyy-mm-dd',Now));
+  mdFile.insert(3,'[extra]');
+  mdFile.insert(4,'order=0');
+  mdFile.insert(5,'+++');
+  mdFile.SaveToFile(TargetPath+'\PartsList.md');
+
+  // Now we need to make the index file
+  mdFile.Clear;
+  mdFile.add('+++');
+  mdFile.add('title="'+BuildName+'"');
+  mdFile.add('+++');
+  mdFile.SaveToFile(TargetPath+'\_index.md');
+
+  Application.MessageBox(pchar('Content written to '+TargetPath),'Files Written');
+
+  BuildList.Free;
+end;
+
 procedure TForm1.PageControl1Change (Sender: TObject);
 (*
 @AI:summary: Update the form UI for the specified tab.  Update the visibility of the menu item for the selected tab.  This is only a UI update, no data change here.
@@ -1751,6 +2631,7 @@ begin
     end;
   end;
 
+  // TODO: What are we doing here??
   if not DynamicTab then begin
   end;
 
@@ -1766,11 +2647,9 @@ begin
 
     if Assigned(ListBox) then begin
       LoadDataIntoListBox(ListBox, TableName);
-      if ListBox.Count > 0 then begin
-        if ListBox.ItemIndex <> max(0, ListBox.ItemIndex) then begin
-          ListBox.ItemIndex := max(0, ListBox.ItemIndex);
-          ListBox.Click;
-        end;
+      if ListBox.ItemIndex < 0 then begin
+        ClearSpecsPane(ShortName);
+        UpdateBuildAssignmentStatus(ShortName);
       end;
 
     end else begin
@@ -1803,6 +2682,12 @@ begin
   try
     if lbBuildList.ItemIndex = -1 then begin
       Query.SQL.Text := 'SELECT DeviceID, QRCode, Title FROM ' + TableName + ' ORDER BY upper(Title),QRCode;';
+    end else if mnuShowOnlyAttachedHardware.Checked then begin
+      Query.SQL.Text := 'select DeviceID, QRCode, Title FROM ' + TableName +
+        ' where DeviceID in (select ComponentID from BuildComponents where Component=:Component and BuildID=:BuildID)' +
+        ' order by lower(Title),QRCode;';
+      Query.ParamByName('Component').AsString := SafeComponentName(PageControl1.ActivePage.Caption);
+      Query.ParamByName('BuildID').AsInteger := o2i(lbBuildList.Items.Objects[lbBuildList.ItemIndex]);
     end else begin
       Query.Sql.Text := 'select DeviceID, QRCode, Title FROM ' + TableName + ' order by DeviceID in (select ComponentID from BuildComponents where Component=:Component and BuildID=:BuildID) desc,lower(Title),QRCode;';
       Query.ParamByName('Component').AsString := SafeComponentName(PageControl1.ActivePage.Caption);
@@ -1838,22 +2723,29 @@ var
   AssignPanel: TPanel;
   AssignLabel: TLabel;
   AssignButton: TButton;
+  AssignSwapPanel: TPanel;
+  AssignSwapLabel: tLabel;
+  AssignSwapCombo: TComboBox;
+  AssignSwapButton: TButton;
   AssignMemo: TMemo;
   Prefix: string;
+
+procedure SetObjProps(NewObj:tControl; CompName:string; ParentObj:TWinControl;Alignment:TAlign);
+begin
+  NewObj.Name := SafeComponentName(Prefix + CompName);
+  NewObj.Parent := ParentObj;
+  NewObj.Align:=Alignment;
+end;
+
 begin
   Prefix := TabShortName + '__BuildAssign__';
-
   AssignPanel := TPanel.Create(Frame);
-  AssignPanel.Name := SafeComponentName(Prefix + 'Panel');
-  AssignPanel.Parent := Frame;
-  AssignPanel.Align := alRight;
+  SetObjProps(AssignPanel, 'Panel', Frame, alRight);
   AssignPanel.Width := trunc(220 * 1.5);
   AssignPanel.BevelOuter := bvNone;
 
   AssignLabel := TLabel.Create(AssignPanel);
-  AssignLabel.Name := SafeComponentName(Prefix + 'Label');
-  AssignLabel.Parent := AssignPanel;
-  AssignLabel.Align := alTop;
+  SetObjProps(AssignLabel, 'Label' ,AssignPanel, alTop);
   AssignLabel.Alignment := taRightJustify;
   AssignLabel.Font.Style := [fsBold];
   AssignLabel.Caption := 'Currently assigned to:' + LineEnding + '(Unassigned)';
@@ -1861,17 +2753,36 @@ begin
   AssignLabel.Height := 36;
 
   AssignButton := TButton.Create(AssignPanel);
-  AssignButton.Name := SafeComponentName(Prefix + 'Button');
-  AssignButton.Parent := AssignPanel;
-  AssignButton.Align := alTop;
+  SetObjProps(AssignButton,'Button',AssignPanel, alTop);
   AssignButton.Caption := 'Assign to Build';
   AssignButton.Height := 30;
   AssignButton.OnClick := @AssignBuildButtonClick;
 
+  AssignSwapPanel:=TPanel.Create(AssignPanel);
+  SetObjProps(AssignSwapPanel,'AssignPanel',AssignPanel,alTop);
+  with AssignSwapPanel do begin
+    Height:=64;
+    Caption:=' ';
+    AutoSize:=false;
+    top:=65500;
+  end;
+
+  AssignSwapLabel:=TLabel.Create(AssignSwapPanel);
+  SetObjProps(AssignSwapLabel,'AssignLabel',AssignSwapPanel,alTop);
+  with AssignSwapLabel do begin
+    Caption:='Swap this device to...';
+  end;
+
+  AssignSwapCombo:=TComboBox.Create(AssignSwapPanel);
+  SetObjProps(AssignSwapCombo,'AssignSwapCombo',AssignSwapPanel,alNone);
+  with AssignSwapCombo do begin
+
+  end;
+//  AssignSwapCombo: TComboBox;
+//  AssignSwapButton: TButton;
+
   AssignMemo := TMemo.Create(AssignPanel);
-  AssignMemo.Name := SafeComponentName(Prefix + 'Memo');
-  AssignMemo.Parent := AssignPanel;
-  AssignMemo.Align := alClient;
+  SetObjProps(AssignMemo,'Memo',AssignPanel, alClient);
   AssignMemo.ReadOnly := True;
   AssignMemo.WordWrap := True;
   AssignMemo.ScrollBars := ssVertical;
@@ -2212,21 +3123,46 @@ begin
   if (Sender is TListBox) then begin
     lb := TListBox(Sender);
 
-    // Get DeviceID from selected item
-    DeviceID := ListObject(lb);
-    if DeviceID = -1 then begin
-      Exit;
-    end;
-
     // Get the tab short name
     ParentGroup := TGroupBox(lb.Parent);
     ParentTab := TTabSheet(ParentGroup.Parent);
     TabShortName := StringReplace(ParentTab.Caption, ' ', '', [rfReplaceAll]);
 
+    // Get DeviceID from selected item
+    DeviceID := ListObject(lb);
+    if DeviceID = -1 then begin
+      ClearSpecsPane(TabShortName);
+      UpdateBuildAssignmentStatus(TabShortName);
+      ReloadImagesOnScreen;
+      Exit;
+    end;
+
     // Call general-purpose spec population logic
     PopulateSpecsPane(DeviceID, TabShortName);
     UpdateBuildAssignmentStatus(TabShortName);
     ReloadImagesOnScreen;
+  end;
+end;
+
+procedure TForm1.ClearSpecsPane(const TabShortName: string);
+(*
+@AI:summary: Clears edit/combo detail fields for a dynamic component tab when no component is selected.
+@AI:notes: Prevents stale details from a previously selected item/tab remaining visible after tab changes or empty filtered lists.
+*)
+var
+  i: Integer;
+  ComponentName: string;
+  SubjectComponent: TObject;
+begin
+  for i := 0 to GlobalComponentList.Count - 1 do begin
+    ComponentName := GlobalComponentList.Names[i];
+    if Pos(TabShortName + '__', ComponentName) = 1 then begin
+      SubjectComponent := GlobalComponentList.Objects[i];
+      if SubjectComponent is TEdit then
+        TEdit(SubjectComponent).Text := ''
+      else if SubjectComponent is TComboBox then
+        TComboBox(SubjectComponent).Text := '';
+    end;
   end;
 end;
 
@@ -2436,30 +3372,314 @@ begin
   sbSystemBuildSpecs.EndUpdateBounds;
 end;
 
-procedure TForm1.RenderComponentGroups;
+procedure TForm1.SetupBuildSummaryPane;
 (*
-@AI:summary: Renders groups of components within a form.
-@AI:params: None.
-@AI:returns: None.
-TODO: I think this has been refactored out of the tool since it's dealing with group boxes not frames like we're shifting to. Need to trace this code.
+@AI:summary: Applies runtime safety properties to the design-time Build Summary controls.
+@AI:notes: The memo/buttons/panel live in frmmain.lfm for IDE styling; do not dynamically recreate them here.
+*)
+begin
+  // Build summary controls now live in frmmain.lfm so they can be styled in the IDE.
+  sbSystemBuildSpecs.Align := alClient;
+  sbSystemBuildSpecs.BorderStyle := bsNone;
+  memBuildSummary.ReadOnly := True;
+  memBuildSummary.WordWrap := False;
+  memBuildSummary.ScrollBars := ssAutoBoth;
+end;
+
+function TForm1.BuildSummaryUseShortLabels: Boolean;
+var
+  Ini: TIniFile;
+begin
+  Ini := TIniFile.Create('Structure.ini');
+  try
+    Result := Ini.ReadBool('CardOutput', 'UseShortLabels', True);
+  finally
+    Ini.Free;
+  end;
+end;
+
+procedure TForm1.SetBuildSummaryUseShortLabels(UseShortLabels: Boolean);
+begin
+  WriteStructureIniBoolPreserveComments('CardOutput', 'UseShortLabels', UseShortLabels);
+end;
+
+procedure TForm1.WriteStructureIniBoolPreserveComments(const Section, Ident: string; Value: Boolean);
+(*
+@AI:summary: Updates one boolean setting in Structure.ini without letting TIniFile rewrite and strip comments.
+@AI:notes: Structure.ini is user documentation as well as configuration. TIniFile.WriteBool rewrites the file and removes comments, so runtime preferences use this line-preserving updater instead.
 *)
 var
-  x: integer;
-  pnl: tGroupBox;
-  mi: TMenuItem;// mi = MenuItem
+  Lines: TStringList;
+  i, InsertAt: Integer;
+  InTargetSection, SectionFound, IdentWritten: Boolean;
+  SectionHeader, Prefix, NewLine: string;
 begin
-  for x := 0 to MainMenu1.Items.Count - 1 do begin
-    mi := TMenuItem(MainMenu1.Items[x]);
-    if mi.Name.EndsWith('_T') then begin
-      pnl := tGroupBox.Create(sbSystemBuildSpecs);
-      pnl.Name := 'gbBuild_' + mi.Name;
-      pnl.Caption := TMenuItem(MainMenu1.Items[x]).Caption;
-      pnl.Align := alTop;
-      pnl.Top := 65535;
-      pnl.ClientHeight := 90;
-      pnl.Visible := True;
-      pnl.Parent := sbSystemBuildSpecs;
+  Lines := TStringList.Create;
+  try
+    Lines.LoadFromFile('Structure.ini');
+    SectionHeader := '[' + Section + ']';
+    NewLine := Ident + '=' + IntToStr(Ord(Value));
+    InTargetSection := False;
+    SectionFound := False;
+    IdentWritten := False;
+    InsertAt := Lines.Count;
+
+    for i := 0 to Lines.Count - 1 do begin
+      if (Length(Trim(Lines[i])) > 1) and (Trim(Lines[i])[1] = '[') then begin
+        if InTargetSection and not IdentWritten then begin
+          InsertAt := i;
+          Break;
+        end;
+        InTargetSection := SameText(Trim(Lines[i]), SectionHeader);
+        if InTargetSection then
+          SectionFound := True;
+      end else if InTargetSection then begin
+        Prefix := Trim(Copy(Lines[i], 1, Pos('=', Lines[i] + '=') - 1));
+        if SameText(Prefix, Ident) then begin
+          Lines[i] := NewLine;
+          IdentWritten := True;
+          Break;
+        end;
+      end;
     end;
+
+    if not IdentWritten then begin
+      if not SectionFound then begin
+        if (Lines.Count > 0) and (Trim(Lines[Lines.Count - 1]) <> '') then
+          Lines.Add('');
+        Lines.Add(SectionHeader);
+        Lines.Add(NewLine);
+      end else
+        Lines.Insert(InsertAt, NewLine);
+    end;
+    Lines.SaveToFile('Structure.ini');
+  finally
+    Lines.Free;
+  end;
+end;
+
+function TForm1.BuildComponentLabel(const ComponentName: string; UseShortLabels: Boolean): string;
+(*
+@AI:summary: Converts an internal/safe component name to either the friendly Structure.ini [Order] name or optional [ShortLabels] value.
+@AI:notes: Used by the Build Summary memo so printable/exported labels can show RAM/CPU/GPU while database identities remain unchanged.
+*)
+var
+  Ini: TIniFile;
+  Order: TStringList;
+  i: Integer;
+  FriendlyName: string;
+begin
+  FriendlyName := ComponentName;
+  Order := TStringList.Create;
+  Ini := TIniFile.Create('Structure.ini');
+  try
+    Ini.ReadSection('Order', Order);
+    for i := 0 to Order.Count - 1 do begin
+      if SafeComponentName(Order[i]) = ComponentName then begin
+        FriendlyName := Order[i];
+        Break;
+      end;
+    end;
+    if UseShortLabels then
+      Result := Ini.ReadString('ShortLabels', FriendlyName, FriendlyName)
+    else
+      Result := FriendlyName;
+  finally
+    Ini.Free;
+    Order.Free;
+  end;
+end;
+
+procedure TForm1.PopulateBuildSummary(UseShortLabels: Boolean);
+(*
+@AI:summary: Populates the read-only build summary memo with fixed-width pre-wrapped card text for clipboard/Excel use.
+@AI:notes: Width settings come from Structure.ini [CardOutput]. This intentionally avoids tab-delimited output so Excel does not control wrapping for credit-card-sized print layouts. Queries BuildComponents into a list before per-device lookups to avoid inactive dataset errors from nested EndQuery commits.
+*)
+var
+  Memo: TMemo;
+  BuildID, i, SepPos, ComponentID, ExistingIndex, DupeCount: Integer;
+  TotalWidth, LabelWidth, ValueWidth: Integer;
+  IncludeBuildName, BlankLineAfterBuild: Boolean;
+  q: TSQLQuery;
+  Ini: TIniFile;
+  Lines, ComponentRows, SummaryRows: TStringList;
+  ComponentName, LabelText, TitleText, ItemLine, RowText: string;
+
+  function PadRightFixed(const S: string; W: Integer): string;
+  begin
+    Result := Copy(S + StringOfChar(' ', W), 1, W);
+  end;
+
+  function LastSpacePos(const S: string): Integer;
+  var
+    p: Integer;
+  begin
+    Result := 0;
+    for p := Length(S) downto 1 do
+      if S[p] = ' ' then begin
+        Result := p;
+        Exit;
+      end;
+  end;
+
+  procedure AddWrappedLine(const ALabel, AValue: string);
+  var
+    Remaining, Piece, Prefix: string;
+    SpacePos: Integer;
+  begin
+    Remaining := Trim(AValue);
+    Prefix := PadRightFixed(ALabel, LabelWidth) + ' ';
+    if Remaining = '' then begin
+      Lines.Add(Prefix);
+      Exit;
+    end;
+    while Remaining <> '' do begin
+      if Length(Remaining) <= ValueWidth then begin
+        Piece := Remaining;
+        Remaining := '';
+      end else begin
+        Piece := Copy(Remaining, 1, ValueWidth);
+        SpacePos := LastSpacePos(Piece);
+        if SpacePos > 0 then begin
+          Piece := Copy(Piece, 1, SpacePos - 1);
+          Delete(Remaining, 1, SpacePos);
+        end else begin
+          Delete(Remaining, 1, ValueWidth);
+        end;
+      end;
+      Lines.Add(Prefix + Piece);
+      Prefix := StringOfChar(' ', LabelWidth) + ' ';
+      Remaining := Trim(Remaining);
+    end;
+  end;
+
+begin
+  Memo := memBuildSummary;
+  if not Assigned(Memo) then Exit;
+
+  Memo.Clear;
+  if lbBuildList.ItemIndex < 0 then Exit;
+
+  Ini := TIniFile.Create('Structure.ini');
+  try
+    if UseShortLabels then begin
+      TotalWidth := Ini.ReadInteger('CardOutput', 'ShortTotalWidth', 32);
+      LabelWidth := Ini.ReadInteger('CardOutput', 'ShortLabelWidth', 5);
+    end else begin
+      TotalWidth := Ini.ReadInteger('CardOutput', 'LongTotalWidth', 40);
+      LabelWidth := Ini.ReadInteger('CardOutput', 'LongLabelWidth', 14);
+    end;
+    IncludeBuildName := Ini.ReadBool('CardOutput', 'IncludeBuildName', True);
+    BlankLineAfterBuild := Ini.ReadBool('CardOutput', 'BlankLineAfterBuild', True);
+  finally
+    Ini.Free;
+  end;
+  if LabelWidth < 1 then LabelWidth := 1;
+  if TotalWidth <= LabelWidth + 1 then TotalWidth := LabelWidth + 10;
+  ValueWidth := TotalWidth - LabelWidth - 1;
+
+  BuildID := O2I(lbBuildList.Items.Objects[lbBuildList.ItemIndex]);
+  Lines := TStringList.Create;
+  ComponentRows := TStringList.Create;
+  SummaryRows := TStringList.Create;
+  try
+    if IncludeBuildName then begin
+      q:=NewQuery(s3db);
+      try
+        q.SQL.Text:='select BuildQR, BuildName from BuildList where BuildID=:BuildID';
+        q.ParamByName('BuildID').AsInteger := BuildID;
+        q.open;
+        while not q.eof do begin
+          AddWrappedLine('Build', q.FieldByName('BuildName').AsString);
+          AddWrappedLine('QR',q.FieldByName('BuildQR').AsString);
+          q.Next;
+        end;
+        if BlankLineAfterBuild then Lines.Add('');
+      finally
+        EndQuery(q);
+      end;
+    end;
+
+    q := NewQuery(S3DB);
+    try
+      q.SQL.Text := 'select Component, ComponentID from BuildComponents where BuildID=:BuildID order by Component, ComponentID';
+      q.ParamByName('BuildID').AsInteger := BuildID;
+      q.Open;
+      while not q.EOF do begin
+        ComponentRows.Add(q.FieldByName('Component').AsString + '=' + q.FieldByName('ComponentID').AsString);
+        q.Next;
+      end;
+    finally
+      EndQuery(q);
+    end;
+
+    for i := 0 to ComponentRows.Count - 1 do begin
+      ItemLine := ComponentRows[i];
+      SepPos := Pos('=', ItemLine);
+      if SepPos = 0 then Continue;
+      ComponentName := Copy(ItemLine, 1, SepPos - 1);
+      ComponentID := StrToIntDef(Copy(ItemLine, SepPos + 1, MaxInt), -1);
+      LabelText := BuildComponentLabel(ComponentName, UseShortLabels);
+      TitleText := '';
+
+      q := NewQuery(S3DB);
+      try
+        q.SQL.Text := 'select Title from Device_' + ComponentName + ' where DeviceID=:DeviceID';
+        q.ParamByName('DeviceID').AsInteger := ComponentID;
+        q.Open;
+        if not q.EOF then
+          TitleText := q.FieldByName('Title').AsString;
+      finally
+        EndQuery(q);
+      end;
+      RowText := LabelText + #9 + TitleText;
+      ExistingIndex := SummaryRows.IndexOf(RowText);
+      if ExistingIndex = -1 then
+        SummaryRows.AddObject(RowText, I2O(1))
+      else
+        SummaryRows.Objects[ExistingIndex] := I2O(O2I(SummaryRows.Objects[ExistingIndex]) + 1);
+    end;
+
+    for i := 0 to SummaryRows.Count - 1 do begin
+      RowText := SummaryRows[i];
+      SepPos := Pos(#9, RowText);
+      if SepPos = 0 then Continue;
+      LabelText := Copy(RowText, 1, SepPos - 1);
+      TitleText := Copy(RowText, SepPos + 1, MaxInt);
+      DupeCount := O2I(SummaryRows.Objects[i]);
+      if DupeCount > 1 then
+        TitleText := IntToStr(DupeCount)+'x '+ TitleText;
+      AddWrappedLine(LabelText, TitleText);
+    end;
+
+    Memo.Lines.Assign(Lines);
+  finally
+    SummaryRows.Free;
+    ComponentRows.Free;
+    Lines.Free;
+  end;
+end;
+
+procedure TForm1.btnBuildSummaryShortClick(Sender: TObject);
+begin
+  SetBuildSummaryUseShortLabels(True);
+  PopulateBuildSummary(True);
+end;
+
+procedure TForm1.btnBuildSummaryLongClick(Sender: TObject);
+begin
+  SetBuildSummaryUseShortLabels(False);
+  PopulateBuildSummary(False);
+end;
+
+procedure TForm1.btnBuildSummaryCopyClick(Sender: TObject);
+var
+  Memo: TMemo;
+begin
+  Memo := memBuildSummary;
+  if Assigned(Memo) then begin
+    Memo.SelectAll;
+    Memo.CopyToClipboard;
   end;
 end;
 

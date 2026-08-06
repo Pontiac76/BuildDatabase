@@ -1,11 +1,11 @@
 object Form1: TForm1
-  Left = -1927
-  Height = 1028
-  Top = -1083
-  Width = 1693
+  Left = -3
+  Height = 1021
+  Top = -1024
+  Width = 1701
   Caption = 'Form1'
-  ClientHeight = 1028
-  ClientWidth = 1693
+  ClientHeight = 1021
+  ClientWidth = 1701
   Menu = MainMenu1
   OnCreate = FormCreate
   OnDestroy = FormDestroy
@@ -13,9 +13,9 @@ object Form1: TForm1
   LCLVersion = '3.4.0.0'
   object PageControl1: TPageControl
     Left = 0
-    Height = 1028
+    Height = 1021
     Top = 0
-    Width = 1693
+    Width = 1701
     ActivePage = tsBuildSheet
     Align = alClient
     TabIndex = 0
@@ -23,21 +23,21 @@ object Form1: TForm1
     OnChange = PageControl1Change
     object tsBuildSheet: TTabSheet
       Caption = 'Build List'
-      ClientHeight = 1000
-      ClientWidth = 1685
+      ClientHeight = 993
+      ClientWidth = 1693
       object gbCompList1: TGroupBox
         Left = 0
-        Height = 1000
+        Height = 993
         Top = 0
         Width = 230
         Align = alLeft
         Caption = 'Build List'
-        ClientHeight = 980
+        ClientHeight = 973
         ClientWidth = 226
         TabOrder = 0
         object lbBuildList: TListBox
           Left = 0
-          Height = 980
+          Height = 973
           Top = 0
           Width = 226
           Align = alClient
@@ -53,23 +53,23 @@ object Form1: TForm1
       end
       object Panel1: TPanel
         Left = 235
-        Height = 1000
+        Height = 993
         Top = 0
-        Width = 1450
+        Width = 1458
         Align = alClient
         Caption = 'Panel1'
-        ClientHeight = 1000
-        ClientWidth = 1450
+        ClientHeight = 993
+        ClientWidth = 1458
         TabOrder = 1
         object ImageContainer: TPanel
           Left = 1
           Height = 149
-          Top = 850
-          Width = 1448
+          Top = 843
+          Width = 1456
           Align = alBottom
           Caption = 'To Be: Image Viewing Area'
           ClientHeight = 149
-          ClientWidth = 1448
+          ClientWidth = 1456
           ParentBackground = False
           ParentColor = False
           TabOrder = 0
@@ -77,7 +77,7 @@ object Form1: TForm1
             Left = 1
             Height = 147
             Top = 1
-            Width = 1446
+            Width = 1454
             HorzScrollBar.Increment = 1
             HorzScrollBar.Page = 1
             HorzScrollBar.Smooth = True
@@ -94,12 +94,12 @@ object Form1: TForm1
         end
         object gbCompStats1: TGroupBox
           Left = 1
-          Height = 849
+          Height = 842
           Top = 1
           Width = 310
           Align = alLeft
           Caption = 'System Build Specs'
-          ClientHeight = 829
+          ClientHeight = 822
           ClientWidth = 306
           ParentBackground = False
           ParentColor = False
@@ -107,37 +107,94 @@ object Form1: TForm1
           TabOrder = 1
           object sbSystemBuildSpecs: TScrollBox
             Left = 0
-            Height = 829
+            Height = 786
             Top = 0
             Width = 306
-            HorzScrollBar.Page = 1
+            HorzScrollBar.Page = 150
             HorzScrollBar.Tracking = True
-            VertScrollBar.Page = 1
+            VertScrollBar.Page = 23
             VertScrollBar.Tracking = True
             Align = alClient
             AutoSize = True
+            BorderStyle = bsNone
+            ClientHeight = 786
+            ClientWidth = 306
             ParentBackground = False
             TabOrder = 0
+            object memBuildSummary: TMemo
+              Left = 0
+              Height = 786
+              Top = 0
+              Width = 306
+              Align = alClient
+              Font.CharSet = ANSI_CHARSET
+              Font.Height = -16
+              Font.Name = 'Consolas'
+              Font.Pitch = fpFixed
+              Font.Quality = fqDraft
+              ParentFont = False
+              ReadOnly = True
+              ScrollBars = ssAutoBoth
+              TabOrder = 0
+              WordWrap = False
+            end
+          end
+          object pnlBuildSummaryButtons: TPanel
+            Left = 0
+            Height = 36
+            Top = 786
+            Width = 306
+            Align = alBottom
+            ClientHeight = 36
+            ClientWidth = 306
+            TabOrder = 1
+            object btnBuildSummaryShort: TButton
+              Left = 6
+              Height = 25
+              Top = 6
+              Width = 60
+              Caption = 'Short'
+              TabOrder = 0
+              OnClick = btnBuildSummaryShortClick
+            end
+            object btnBuildSummaryLong: TButton
+              Left = 72
+              Height = 25
+              Top = 6
+              Width = 60
+              Caption = 'Long'
+              TabOrder = 1
+              OnClick = btnBuildSummaryLongClick
+            end
+            object btnBuildSummaryCopy: TButton
+              Left = 138
+              Height = 25
+              Top = 6
+              Width = 70
+              Caption = 'Copy'
+              TabOrder = 2
+              OnClick = btnBuildSummaryCopyClick
+            end
           end
         end
         object PageControl2: TPageControl
           Left = 316
-          Height = 849
+          Height = 842
           Top = 1
-          Width = 1133
+          Width = 1141
           ActivePage = TabSheet1
           Align = alClient
           TabIndex = 0
           TabOrder = 2
           object TabSheet1: TTabSheet
             Caption = 'Build Notes'
-            ClientHeight = 821
-            ClientWidth = 1125
+            ClientHeight = 814
+            ClientWidth = 1133
             object Memo1: TMemo
               Left = 0
-              Height = 801
+              Height = 794
               Top = 20
-              Width = 1125
+              Width = 1133
               Align = alClient
               ParentColor = True
               TabOrder = 0
@@ -147,7 +204,7 @@ object Form1: TForm1
               Left = 0
               Height = 20
               Top = 0
-              Width = 1125
+              Width = 1133
               Align = alTop
               Caption = 'Notes about Build'
               TabOrder = 1
@@ -159,14 +216,14 @@ object Form1: TForm1
         end
         object Splitter1: TSplitter
           Left = 311
-          Height = 849
+          Height = 842
           Top = 1
           Width = 5
         end
       end
       object Splitter2: TSplitter
         Left = 230
-        Height = 1000
+        Height = 993
         Top = 0
         Width = 5
       end
@@ -233,10 +290,26 @@ object Form1: TForm1
       object Separator2: TMenuItem
         Caption = '-'
       end
+      object mnuShowOnlyAttachedHardware: TMenuItem
+        AutoCheck = True
+        Caption = 'Show Only Attached Hardware'
+        OnClick = mnuShowOnlyAttachedHardwareClick
+      end
       object MenuItem8: TMenuItem
         Caption = 'Refresh Build List'
         ShortCut = 116
         OnClick = MenuItem8Click
+      end
+      object Separator1: TMenuItem
+        Caption = '-'
+      end
+      object mnuExportBuild: TMenuItem
+        Caption = 'Export System'
+        OnClick = mnuExportBuildClick
+      end
+      object MenuItem4: TMenuItem
+        Caption = 'Export All Systems'
+        OnClick = MenuItem4Click
       end
     end
     object MenuItem2: TMenuItem

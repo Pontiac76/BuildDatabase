@@ -200,7 +200,6 @@ begin
   q.SQL.Text := sql;
   q.ParamByName(WhatIKnow.FieldForID).AsInteger := WhatIKnow.RecordID;
   q.Open;
-  Application.MessageBox(PChar(IntToStr(q.RecordCount)), PChar('wtf'), 0);
 
   if not q.EOF then begin
     // Now the fun part... Getting the blob....

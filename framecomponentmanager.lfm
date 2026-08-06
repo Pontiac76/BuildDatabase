@@ -1,0 +1,9 @@
+object Frame3: TFrame3
+  Left = 0
+  Height = 674
+  Top = 0
+  Width = 381
+  TabOrder = 0
+  DesignLeft = 563
+  DesignTop = 185
+end

@@ -15,6 +15,7 @@ type
     ApplicationProperties1: TApplicationProperties;
     btnExportNoQR: TButton;
     btnExportFull: TButton;
+    btnPrintHTML: TButton;
     btnRenameModel: TButton;
     btnSaveModel: TButton;
     btnDeleteModel: TButton;
@@ -35,6 +36,7 @@ type
     procedure ApplicationProperties1Idle (Sender: TObject; var Done: boolean);
     procedure btnExportFullClick (Sender: TObject);
     procedure btnExportNoQRClick (Sender: TObject);
+    procedure btnPrintHTMLClick (Sender: TObject);
     procedure btnDeleteModelClick (Sender: TObject);
     procedure btnRenameModelClick (Sender: TObject);
     procedure btnSaveModelClick (Sender: TObject);
@@ -73,7 +75,7 @@ var
 implementation
 
 uses SQLite3Conn, SQLite3, SQLDB, SimpleSQLite3, DatabaseManager, MiscFunctions,
-  LCLType, Clipbrd, IniFiles, Math;
+  LCLType, LCLIntf, Clipbrd, IniFiles, Math;
 
   {$R *.lfm}
 
@@ -361,6 +363,60 @@ begin
 
 end;
 
+function HtmlEncode(const S: string): string;
+begin
+  Result := StringReplace(S, '&', '&amp;', [rfReplaceAll]);
+  Result := StringReplace(Result, '<', '&lt;', [rfReplaceAll]);
+  Result := StringReplace(Result, '>', '&gt;', [rfReplaceAll]);
+  Result := StringReplace(Result, '"', '&quot;', [rfReplaceAll]);
+end;
+
+procedure TBuildSheet.btnPrintHTMLClick(Sender: TObject);
+(*
+@AI:summary: Exports the current build sheet grid to a temporary print-friendly HTML file and opens it in the default browser.
+@AI:notes: Intended for printing physical build sheets/cards with minimal margins. Browser print settings still control paper/orientation, but CSS requests small page margins and compact table layout.
+*)
+var
+  Html: TStringList;
+  sg: TStringGrid;
+  x: Integer;
+  OutFile: string;
+  Comp, QR, Desc: string;
+begin
+  Html := TStringList.Create;
+  try
+    sg := StringGrid1;
+    Html.Add('<!doctype html>');
+    Html.Add('<html><head><meta charset="utf-8"><title>Build Sheet</title>');
+    Html.Add('<style>');
+    Html.Add('@page { margin: 0.25in; }');
+    Html.Add('body { margin: 0.15in; font-family: Arial, sans-serif; font-size: 10pt; }');
+    Html.Add('h1 { font-size: 14pt; margin: 0 0 0.08in 0; }');
+    Html.Add('table { border-collapse: collapse; width: 100%; table-layout: fixed; }');
+    Html.Add('th, td { border: 1px solid #444; padding: 3px 5px; vertical-align: top; }');
+    Html.Add('th { background: #eee; }');
+    Html.Add('.component { width: 20%; } .qr { width: 16%; } .desc { width: 64%; }');
+    Html.Add('</style></head><body>');
+    Html.Add('<h1>' + HtmlEncode(sg.Cells[2, 1]) + '</h1>');
+    Html.Add('<table>');
+    Html.Add('<thead><tr><th class="component">Component</th><th class="qr">QR Code</th><th class="desc">Description</th></tr></thead><tbody>');
+    for x := 1 to sg.RowCount - 1 do begin
+      Comp := Trim(sg.Cells[0, x]);
+      QR := Trim(sg.Cells[1, x]);
+      Desc := Trim(sg.Cells[2, x]);
+      if (Comp <> '') or (QR <> '') or (Desc <> '') then
+        Html.Add('<tr><td>' + HtmlEncode(Comp) + '</td><td>' + HtmlEncode(QR) + '</td><td>' + HtmlEncode(Desc) + '</td></tr>');
+    end;
+    Html.Add('</tbody></table></body></html>');
+
+    OutFile := IncludeTrailingPathDelimiter(GetTempDir(False)) + 'BuildDatabase_BuildSheet.html';
+    Html.SaveToFile(OutFile);
+    OpenDocument(OutFile);
+  finally
+    Html.Free;
+  end;
+end;
+
 procedure TBuildSheet.btnExportNoQRClick (Sender: TObject);
 var
   MaxLen: byte;
@@ -643,7 +699,7 @@ end;
 procedure TBuildSheet.NewSheetDB;
 begin
   OpenDB(':memory:', BuildSheetDB);
-  BuildSheetDB.Params.Values['busy_timeout'] := '5000';
+  BuildSheetDB.Params.Values['busy_timeout'] := '10000';
   // Yes, I know, :MEMORY:, but, for debugging, could be using a file on the filesystem, so, throwing this technically no-op call in.
   BuildSheetDB.ExecuteDirect('drop table if exists WorkSheet');
   BuildSheetDB.ExecuteDirect('create table WorkSheet (RowNum Integer, GroupOrder Integer,  Component Text, QRCode Text, Title Text)');

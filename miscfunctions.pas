@@ -21,7 +21,7 @@ function O2I (obj: TObject): integer;
 function I2O (Value: integer): TObject;
 function ListObject (lb: TListBox): integer;
 procedure SizeForm (frm, relativeTo: TForm; Scale: byte);
-function SafeComponentName (Raw: string): string;
+function SafeComponentName (Raw: string;UsedForFilename:boolean=false): string;
 function CalcCRC32Hex (Stream: TStream): string;
 procedure ResizeImageMax (var Img: TImageData; MaxWidth, MaxHeight: integer);
 function FindAnyComponent (Root: TComponent; const Name: string): TComponent;
@@ -153,7 +153,7 @@ begin
   frm.Top := TargetMonitor.Top + ((TargetMonitor.Height - frm.Height) div 2);
 end;
 
-function SafeComponentName (Raw: string): string;
+function SafeComponentName (Raw: string;UsedForFilename:boolean=false): string;
 (*
 @AI:summary: This function likely sanitizes or processes a raw string to ensure it is safe for use as a component name.
 @AI:params: Raw: The input string that needs to be sanitized or processed.
@@ -175,9 +175,10 @@ begin
     Cleaned := 'X';
   end;
 
-  if Cleaned[1] in ['0'..'9'] then begin
-    Cleaned := 'C_' + Cleaned;
-  end;
+  if not UsedForFilename then
+    if Cleaned[1] in ['0'..'9'] then begin
+      Cleaned := 'C_' + Cleaned;
+    end;
 
   Result := Cleaned;
 end;
