@@ -16,11 +16,14 @@ type
     btnExportNoQR: TButton;
     btnExportFull: TButton;
     btnPrintHTML: TButton;
+    btnPhotoServer: TButton;
     btnRenameModel: TButton;
     btnSaveModel: TButton;
     btnDeleteModel: TButton;
     btnSaveSheet: TButton;
+    btnUpdateSheet: TButton;
     btnClearSheet: TButton;
+    chkShowFullBuild: TCheckBox;
     btnSearch: TButton;
     cboBuildSheetModel: TComboBox;
     Edit1: TEdit;
@@ -33,22 +36,31 @@ type
     Panel5: TPanel;
     ScrollBox1: TScrollBox;
     StringGrid1: TStringGrid;
+    tmrGridNavigate: TTimer;
+    tmrSavedCaption: TTimer;
     procedure ApplicationProperties1Idle (Sender: TObject; var Done: boolean);
     procedure btnExportFullClick (Sender: TObject);
     procedure btnExportNoQRClick (Sender: TObject);
     procedure btnPrintHTMLClick (Sender: TObject);
+    procedure btnPhotoServerClick(Sender: TObject);
     procedure btnDeleteModelClick (Sender: TObject);
     procedure btnRenameModelClick (Sender: TObject);
     procedure btnSaveModelClick (Sender: TObject);
     procedure btnClearSheetClick (Sender: TObject);
     procedure btnSaveSheetClick (Sender: TObject);
+    procedure btnUpdateSheetClick(Sender: TObject);
     procedure btnSearchClick (Sender: TObject);
+    procedure chkShowFullBuildChange(Sender: TObject);
     procedure cboBuildSheetModelChange (Sender: TObject);
     procedure FormCreate (Sender: TObject);
     procedure FormDestroy (Sender: TObject);
     procedure FormResize (Sender: TObject);
     procedure gbBuildSheetsResize (Sender: TObject);
+    procedure IdleTimer1Timer(Sender:TObject);
+    procedure StringGrid1Click(Sender: TObject);
     procedure StringGrid1SetEditText (Sender: TObject; ACol, ARow: integer; const Value: string);
+    procedure tmrGridNavigateTimer(Sender: TObject);
+    procedure tmrSavedCaptionTimer(Sender: TObject);
     procedure ValidateNumbers (Sender: TObject);
   private
     procedure RepopulateForm;
@@ -58,6 +70,9 @@ type
     procedure CheckSheet;
     procedure SaveSheet;
     procedure LoadSheet;
+    procedure SaveSheetToDatabase(CloseAfterSave: Boolean);
+    procedure ShowSheetSavedCaption;
+    procedure RebuildSheetFromCurrentContext;
 
     function rOrder: string;
     function rSafeOrder: string;
@@ -65,6 +80,7 @@ type
     property IniOrder: string read rOrder;
     property IniSafeOrder: string read rSafeOrder;
   public
+    procedure LoadBuildQR(const BuildQR: string);
 
   end;
 
@@ -75,7 +91,7 @@ var
 implementation
 
 uses SQLite3Conn, SQLite3, SQLDB, SimpleSQLite3, DatabaseManager, MiscFunctions,
-  LCLType, LCLIntf, Clipbrd, IniFiles, Math;
+  LCLType, LCLIntf, Clipbrd, IniFiles, Math, frmMain;
 
   {$R *.lfm}
 
@@ -86,6 +102,7 @@ var
   BuildSheetDB: TSQLite3Connection;
   lOrder: TStringList;
   lSafeOrder: TStringList;
+  RebuildingSheet: Boolean = False;
 
 procedure TBuildSheet.FormCreate (Sender: TObject);
 begin
@@ -102,36 +119,44 @@ var
   q: TSQLQuery;
   BuildSheetID: integer;
 begin
-  Order := TStringList.Create;
-  Order.Text := rOrder;
-  // Fill everything up with zeros, since the BuildSheetList may not have a valid entry
-  for x := 0 to Order.Count - 1 do begin
-    Edit := tEdit(FindAnyComponent(ScrollBox1, 'txt' + SafeComponentName(Order[x])));
-    Edit.Text := '1';
-  end;
-  Order.Free;
-
-  // Populate the text fields that exist
-  if cboBuildSheetModel.ItemIndex > 0 then begin
-    BuildSheetID := O2I(cboBuildSheetModel.Items.Objects[cboBuildSheetModel.ItemIndex]);
-    q := NewQuery(s3db);
-    q.SQL.Text := 'select * from BuildSheetLists where BuildSheetID=:BSID';
-    q.ParamByName('BSID').AsInteger := BuildSheetID;
-    q.Open;
-    while not q.EOF do begin
-      Edit := tEdit(FindAnyComponent(ScrollBox1, q.FieldByName('ComponentName').AsString));
-      Edit.Text := trim(q.FieldByName('ComponentCount').AsString);
-      q.Next;
+  if RebuildingSheet then Exit;
+  RebuildingSheet := True;
+  try
+    Order := TStringList.Create;
+    Order.Text := rOrder;
+    // Fill everything up with zeros, since the BuildSheetList may not have a valid entry
+    for x := 0 to Order.Count - 1 do begin
+      Edit := tEdit(FindAnyComponent(ScrollBox1, 'txt' + SafeComponentName(Order[x])));
+      Edit.Text := '1';
     end;
-    EndQuery(q);
-  end;
+    Order.Free;
 
-  // Take whatever we have in the grid, and put it into the RAM database
-  SaveSheet;
-  // Now let's check whats on the sheet
-  CheckSheet;
-  // Now put the proper contents ON the sheet.
-  LoadSheet;
+    // Populate the text fields that exist
+    if cboBuildSheetModel.ItemIndex > 0 then begin
+      BuildSheetID := O2I(cboBuildSheetModel.Items.Objects[cboBuildSheetModel.ItemIndex]);
+      q := NewQuery(s3db);
+      q.SQL.Text := 'select ShowFullBuild from BuildSheets where BuildSheetID=:BSID';
+      q.ParamByName('BSID').AsInteger := BuildSheetID;
+      q.Open;
+      if not q.EOF then
+        chkShowFullBuild.Checked := q.FieldByName('ShowFullBuild').AsInteger <> 0;
+      EndQuery(q);
+
+      q := NewQuery(s3db);
+      q.SQL.Text := 'select * from BuildSheetLists where BuildSheetID=:BSID';
+      q.ParamByName('BSID').AsInteger := BuildSheetID;
+      q.Open;
+      while not q.EOF do begin
+        Edit := tEdit(FindAnyComponent(ScrollBox1, q.FieldByName('ComponentName').AsString));
+        Edit.Text := trim(q.FieldByName('ComponentCount').AsString);
+        q.Next;
+      end;
+      EndQuery(q);
+    end;
+  finally
+    RebuildingSheet := False;
+  end;
+  RebuildSheetFromCurrentContext;
 end;
 
 procedure TBuildSheet.btnSaveModelClick (Sender: TObject);
@@ -147,8 +172,9 @@ begin
     ModelName := trim(InputBox('New Model Name', 'Enter the name of this Build Sheet Model', ''));
     if ModelName <> '' then begin
       q := NewQuery(S3DB);
-      q.SQL.Text := 'insert into BuildSheets (Title) values (:Title)';
+      q.SQL.Text := 'insert into BuildSheets (Title, ShowFullBuild) values (:Title, :ShowFullBuild)';
       q.ParamByName('Title').AsString := ModelName;
+      q.ParamByName('ShowFullBuild').AsInteger := Ord(chkShowFullBuild.Checked);
       q.ExecSQL;
       ModelID := S3DB.GetInsertID;
       EndQuery(q);
@@ -159,6 +185,13 @@ begin
     ModelName := cboBuildSheetModel.Items[cboBuildSheetModel.ItemIndex];
     ModelID := O2I(cboBuildSheetModel.Items.Objects[cboBuildSheetModel.ItemIndex]);
   end;
+  q := NewQuery(S3DB);
+  q.SQL.Text := 'update BuildSheets set ShowFullBuild=:ShowFullBuild where BuildSheetID=:BSID';
+  q.ParamByName('ShowFullBuild').AsInteger := Ord(chkShowFullBuild.Checked);
+  q.ParamByName('BSID').AsInteger := ModelID;
+  q.ExecSQL;
+  EndQuery(q);
+
   Order := TStringList.Create;
   Order.Text := rOrder;
 
@@ -190,6 +223,30 @@ begin
 end;
 
 procedure TBuildSheet.btnSaveSheetClick (Sender: TObject);
+begin
+  SaveSheetToDatabase(True);
+end;
+
+procedure TBuildSheet.btnUpdateSheetClick(Sender: TObject);
+begin
+  SaveSheetToDatabase(False);
+end;
+
+procedure TBuildSheet.tmrSavedCaptionTimer(Sender: TObject);
+begin
+  tmrSavedCaption.Enabled := False;
+  Caption := 'Build Sheet';
+end;
+
+procedure TBuildSheet.ShowSheetSavedCaption;
+begin
+  Caption := 'Build Sheet - Sheet Saved';
+  tmrSavedCaption.Enabled := False;
+  tmrSavedCaption.Interval := 5000;
+  tmrSavedCaption.Enabled := True;
+end;
+
+procedure TBuildSheet.SaveSheetToDatabase(CloseAfterSave: Boolean);
 // And... away.. we go....
 var
   q: TSQLQuery;
@@ -201,6 +258,7 @@ var
   CompTitle: string;
   BuildName: string;
   x: integer;
+  VisibleComponents: TStringList;
 begin
   // First, let's figure out if the build is correct
   // The save button is protected from being run based on valid QRs being present
@@ -239,14 +297,34 @@ begin
     EndQuery(q);
   end;
 
-  // Clearout the existing relationships
-  q := NewQuery(s3db);
-  q.SQL.Text := 'delete from BuildComponents where BuildID=:ID';
-  q.ParamByName('ID').AsInteger := BuildID;
-  q.ExecSQL;
-  EndQuery(q);
+  // Clear only the component categories that are visible on this sheet.
+  // Anything not represented by the selected sheet/model is preserved in the build manifest.
+  VisibleComponents := TStringList.Create;
+  try
+    VisibleComponents.Sorted := True;
+    VisibleComponents.Duplicates := dupIgnore;
+    for x := 2 to StringGrid1.RowCount - 1 do begin
+      CompName := Trim(StringGrid1.Cells[0, x]);
+      if CompName <> '' then
+        VisibleComponents.Add(SafeComponentName(CompName));
+    end;
 
-  // Now we need to go down the rest of the list to check if the components exist, and do the update or insert.
+    for x := 0 to VisibleComponents.Count - 1 do begin
+      q := NewQuery(s3db);
+      try
+        q.SQL.Text := 'delete from BuildComponents where BuildID=:ID and Component=:Comp';
+        q.ParamByName('ID').AsInteger := BuildID;
+        q.ParamByName('Comp').AsString := VisibleComponents[x];
+        q.ExecSQL;
+      finally
+        EndQuery(q);
+      end;
+    end;
+  finally
+    VisibleComponents.Free;
+  end;
+
+  // Now we need to go down the rest of the visible list to check if the components exist, and do the update or insert.
   for x := 2 to StringGrid1.RowCount - 1 do begin
     CompName := StringGrid1.Cells[0, x];
     CompQR := StringGrid1.Cells[1, x];
@@ -291,7 +369,11 @@ begin
       EndQuery(q);
     end;
   end;
-  ModalResult := mrOk;
+
+  if CloseAfterSave then
+    Close
+  else
+    ShowSheetSavedCaption;
 end;
 
 procedure TBuildSheet.btnSearchClick (Sender: TObject);
@@ -369,6 +451,17 @@ begin
   Result := StringReplace(Result, '<', '&lt;', [rfReplaceAll]);
   Result := StringReplace(Result, '>', '&gt;', [rfReplaceAll]);
   Result := StringReplace(Result, '"', '&quot;', [rfReplaceAll]);
+end;
+
+procedure TBuildSheet.btnPhotoServerClick(Sender: TObject);
+(*
+@AI:summary: Opens the modal phone photo server for the build/component currently selected by the Build Sheet row navigation.
+@AI:notes: Forces the deferred grid navigation timer first so the main form target matches the currently selected sheet row before starting the server.
+*)
+begin
+  tmrGridNavigate.Enabled := False;
+  tmrGridNavigateTimer(nil);
+  Form1.StartPhonePhotoServerForCurrentSelection;
 end;
 
 procedure TBuildSheet.btnPrintHTMLClick(Sender: TObject);
@@ -504,6 +597,46 @@ begin
   btnRenameModel.ClientWidth := SizeTo;
 end;
 
+procedure TBuildSheet.IdleTimer1Timer(Sender:TObject);
+begin
+
+end;
+
+procedure TBuildSheet.StringGrid1Click(Sender: TObject);
+(*
+@AI:summary: Defers Build Sheet to main-form navigation until grid mouse/click selection processing has settled.
+@AI:notes: The timer reads StringGrid1.Row after Lazarus finishes its click handling, avoiding premature row selection during mouse event processing.
+*)
+begin
+  if RebuildingSheet then Exit;
+  tmrGridNavigate.Enabled := False;
+  tmrGridNavigate.Interval := 1;
+  tmrGridNavigate.Enabled := True;
+end;
+
+procedure TBuildSheet.tmrGridNavigateTimer(Sender: TObject);
+var
+  BuildQR, ComponentName, ComponentQR: string;
+  SelectedRow: Integer;
+begin
+  tmrGridNavigate.Enabled := False;
+  if RebuildingSheet then Exit;
+
+  SelectedRow := StringGrid1.Row;
+  if SelectedRow < 1 then Exit;
+
+  BuildQR := Trim(StringGrid1.Cells[1, 1]);
+  if not ValidateQRCode(QRCode, BuildQR) then Exit;
+  if not Form1.SelectBuildByQR(BuildQR) then Exit;
+
+  if SelectedRow <= 1 then Exit;
+  ComponentName := Trim(StringGrid1.Cells[0, SelectedRow]);
+  ComponentQR := Trim(StringGrid1.Cells[1, SelectedRow]);
+  if (ComponentName = '') or (ComponentQR = '') then Exit;
+  if ValidateQRCode(QRCode, ComponentQR) then
+    Form1.SelectComponentByQR(ComponentName, ComponentQR);
+end;
+
 procedure TBuildSheet.StringGrid1SetEditText (Sender: TObject; ACol, ARow: integer; const Value: string);
 var
   q: TSQLQuery;
@@ -520,7 +653,12 @@ var
   DumbConnection: TSQLite3Connection;
 begin
   sg := TStringGrid(Sender);
+  if RebuildingSheet then Exit;
   if (ACol = 1) and (ARow = 1) and ValidateQRCode(QRCode, trim(Value)) then begin
+    RebuildSheetFromCurrentContext;
+    Exit;
+  end;
+  if False and (ACol = 1) and (ARow = 1) and ValidateQRCode(QRCode, trim(Value)) then begin
     // See if we've got a build to pull from
     q := NewQuery(S3DB);
     q.SQL.Text := 'select BuildID from BuildList where BuildQR=:QR';
@@ -609,6 +747,26 @@ begin
   end;
 end;
 
+procedure TBuildSheet.LoadBuildQR(const BuildQR: string);
+(*
+@AI:summary: Loads/rebuilds the Build Sheet for a build QR without saving current grid edits.
+@AI:notes: Used by the main form when Build Sheet is modeless and selected build changes behind it.
+*)
+begin
+  if RebuildingSheet then Exit;
+  if Trim(StringGrid1.Cells[1, 1]) = Trim(BuildQR) then Exit;
+  StringGrid1.Row := 1;
+  StringGrid1.Col := 1;
+  StringGrid1.Cells[1, 1] := Trim(BuildQR);
+  RebuildSheetFromCurrentContext;
+end;
+
+procedure TBuildSheet.chkShowFullBuildChange(Sender: TObject);
+begin
+  if RebuildingSheet then Exit;
+  RebuildSheetFromCurrentContext;
+end;
+
 procedure TBuildSheet.ValidateNumbers (Sender: TObject);
 var
   Edit: TEdit;
@@ -618,12 +776,8 @@ begin
   val(trim(Edit.Text), i, r);
   i := max(0, min(i, 9));
   Edit.Text := trim(IntToStr(i));
-  // Take whatever we have in the grid, and put it into the RAM database
-  SaveSheet;
-  // Now let's check whats on the sheet
-  CheckSheet;
-  // Now put the proper contents ON the sheet.
-  LoadSheet;
+  if not RebuildingSheet then
+    RebuildSheetFromCurrentContext;
 end;
 
 procedure TBuildSheet.RepopulateForm;
@@ -704,6 +858,174 @@ begin
   BuildSheetDB.ExecuteDirect('drop table if exists WorkSheet');
   BuildSheetDB.ExecuteDirect('create table WorkSheet (RowNum Integer, GroupOrder Integer,  Component Text, QRCode Text, Title Text)');
   BuildSheetDB.Transaction.Commit;
+end;
+
+procedure TBuildSheet.RebuildSheetFromCurrentContext;
+(*
+@AI:summary: Rebuilds the Build Sheet grid from the selected build/model/mode without preserving previous grid contents.
+@AI:notes: This is a view rebuild only. Real database changes happen only from Save Sheet or Update Sheet.
+*)
+var
+  BuildQR, BuildName, SafeName, FullName: string;
+  BuildID, RowNum, x, i, ExistingCount, RequestedCount, ComponentID: Integer;
+  q, cq: TSQLQuery;
+  Order, SafeOrder, ComponentRows: TStringList;
+  Edit: TEdit;
+
+  procedure AddRow(const AComponent, AQR, ATitle: string);
+  begin
+    StringGrid1.RowCount := RowNum + 1;
+    StringGrid1.Cells[0, RowNum] := AComponent;
+    StringGrid1.Cells[1, RowNum] := AQR;
+    StringGrid1.Cells[2, RowNum] := ATitle;
+    Inc(RowNum);
+  end;
+
+begin
+  if RebuildingSheet then Exit;
+  RebuildingSheet := True;
+  try
+    BuildQR := Trim(StringGrid1.Cells[1, 1]);
+    StringGrid1.Clean(0, 1, StringGrid1.ColCount, StringGrid1.RowCount, [gzNormal]);
+    StringGrid1.RowCount := 2;
+    StringGrid1.Cells[0, 1] := 'Build Name';
+    StringGrid1.Cells[1, 1] := BuildQR;
+    RowNum := 2;
+
+    if not ValidateQRCode(QRCode, BuildQR) then Exit;
+
+    BuildID := -1;
+    q := NewQuery(S3DB);
+    try
+      q.SQL.Text := 'select BuildID, BuildName from BuildList where BuildQR=:QR';
+      q.ParamByName('QR').AsString := BuildQR;
+      q.Open;
+      if not q.EOF then begin
+        BuildID := q.FieldByName('BuildID').AsInteger;
+        BuildName := q.FieldByName('BuildName').AsString;
+        StringGrid1.Cells[2, 1] := BuildName;
+      end;
+    finally
+      EndQuery(q);
+    end;
+    if BuildID = -1 then Exit;
+
+    Order := TStringList.Create;
+    SafeOrder := TStringList.Create;
+    try
+      Order.Text := rOrder;
+      for x := 0 to Order.Count - 1 do
+        SafeOrder.Add(SafeComponentName(Order[x]));
+
+      if chkShowFullBuild.Checked then begin
+        // Full-build mode still respects Structure.ini order/grouping. For each
+        // component group: show assigned rows first, then add model-requested blank
+        // rows for that same group if the model count is higher than assigned count.
+        for x := 0 to Order.Count - 1 do begin
+          FullName := Order[x];
+          SafeName := SafeOrder[x];
+          Edit := TEdit(FindAnyComponent(ScrollBox1, 'txt' + SafeName));
+          RequestedCount := StrToIntDef(Edit.Text, 0);
+          ExistingCount := 0;
+
+          ComponentRows := TStringList.Create;
+          try
+            q := NewQuery(S3DB);
+            try
+              q.SQL.Text := 'select ComponentID from BuildComponents where BuildID=:BuildID and Component=:Component order by ComponentID';
+              q.ParamByName('BuildID').AsInteger := BuildID;
+              q.ParamByName('Component').AsString := SafeName;
+              q.Open;
+              while not q.EOF do begin
+                ComponentRows.Add(q.FieldByName('ComponentID').AsString);
+                q.Next;
+              end;
+            finally
+              EndQuery(q);
+            end;
+
+            for i := 0 to ComponentRows.Count - 1 do begin
+              ComponentID := StrToIntDef(ComponentRows[i], -1);
+              cq := NewQuery(S3DB);
+              try
+                cq.SQL.Text := 'select QRCode, Title from Device_' + SafeName + ' where DeviceID=:DeviceID';
+                cq.ParamByName('DeviceID').AsInteger := ComponentID;
+                cq.Open;
+                if not cq.EOF then begin
+                  AddRow(FullName, cq.FieldByName('QRCode').AsString, cq.FieldByName('Title').AsString);
+                  Inc(ExistingCount);
+                end;
+              finally
+                EndQuery(cq);
+              end;
+            end;
+          finally
+            ComponentRows.Free;
+          end;
+
+          while ExistingCount < RequestedCount do begin
+            AddRow(FullName, '', '');
+            Inc(ExistingCount);
+          end;
+        end;
+      end else begin
+        for x := 0 to Order.Count - 1 do begin
+          FullName := Order[x];
+          SafeName := SafeOrder[x];
+          Edit := TEdit(FindAnyComponent(ScrollBox1, 'txt' + SafeName));
+          RequestedCount := StrToIntDef(Edit.Text, 0);
+          if RequestedCount <= 0 then Continue;
+          ExistingCount := 0;
+
+          ComponentRows := TStringList.Create;
+          try
+            q := NewQuery(S3DB);
+            try
+              q.SQL.Text := 'select ComponentID from BuildComponents where BuildID=:BuildID and Component=:Component order by ComponentID';
+              q.ParamByName('BuildID').AsInteger := BuildID;
+              q.ParamByName('Component').AsString := SafeName;
+              q.Open;
+              while not q.EOF do begin
+                ComponentRows.Add(q.FieldByName('ComponentID').AsString);
+                q.Next;
+              end;
+            finally
+              EndQuery(q);
+            end;
+
+            for i := 0 to ComponentRows.Count - 1 do begin
+              ComponentID := StrToIntDef(ComponentRows[i], -1);
+              cq := NewQuery(S3DB);
+              try
+                cq.SQL.Text := 'select QRCode, Title from Device_' + SafeName + ' where DeviceID=:DeviceID';
+                cq.ParamByName('DeviceID').AsInteger := ComponentID;
+                cq.Open;
+                if not cq.EOF then begin
+                  AddRow(FullName, cq.FieldByName('QRCode').AsString, cq.FieldByName('Title').AsString);
+                  Inc(ExistingCount);
+                end;
+              finally
+                EndQuery(cq);
+              end;
+            end;
+          finally
+            ComponentRows.Free;
+          end;
+
+          while ExistingCount < RequestedCount do begin
+            AddRow(FullName, '', '');
+            Inc(ExistingCount);
+          end;
+        end;
+      end;
+    finally
+      SafeOrder.Free;
+      Order.Free;
+    end;
+    StringGrid1.AutoSizeColumn(0);
+  finally
+    RebuildingSheet := False;
+  end;
 end;
 
 procedure TBuildSheet.SaveSheet;

@@ -122,49 +122,84 @@ object BuildSheet: TBuildSheet
         TabOrder = 0
         OnClick = btnSaveSheetClick
       end
-      object btnClearSheet: TButton
+      object btnUpdateSheet: TButton
         Left = 96
+        Height = 28
+        Top = 11
+        Width = 85
+        Align = alLeft
+        BorderSpacing.Around = 10
+        Caption = 'Update Sheet'
+        TabOrder = 1
+        OnClick = btnUpdateSheetClick
+      end
+      object btnClearSheet: TButton
+        Left = 191
         Height = 28
         Top = 11
         Width = 75
         Align = alLeft
         BorderSpacing.Around = 10
         Caption = 'Clear Sheet'
-        TabOrder = 1
+        TabOrder = 2
         OnClick = btnClearSheetClick
       end
       object btnExportNoQR: TButton
-        Left = 181
+        Left = 276
         Height = 28
         Top = 11
         Width = 99
         Align = alLeft
         BorderSpacing.Around = 10
         Caption = 'Export  (NoQR)'
-        TabOrder = 2
+        TabOrder = 3
         OnClick = btnExportNoQRClick
       end
       object btnExportFull: TButton
-        Left = 290
+        Left = 385
         Height = 28
         Top = 11
         Width = 99
         Align = alLeft
         BorderSpacing.Around = 10
         Caption = 'Export  (Full)'
-        TabOrder = 3
+        TabOrder = 4
         OnClick = btnExportFullClick
       end
       object btnPrintHTML: TButton
-        Left = 399
+        Left = 494
         Height = 28
         Top = 11
         Width = 105
         Align = alLeft
         BorderSpacing.Around = 10
         Caption = 'Print HTML'
-        TabOrder = 4
+        TabOrder = 5
         OnClick = btnPrintHTMLClick
+      end
+      object chkShowFullBuild: TCheckBox
+        Left = 609
+        Height = 28
+        Top = 11
+        Width = 99
+        Align = alLeft
+        BorderSpacing.Around = 10
+        Caption = 'Show Full Build'
+        Checked = True
+        State = cbChecked
+        TabOrder = 6
+        OnChange = chkShowFullBuildChange
+      end
+      object btnPhotoServer: TButton
+        Left = 718
+        Height = 28
+        Top = 11
+        Width = 95
+        Align = alLeft
+        BorderSpacing.Around = 10
+        Caption = 'Photo Server'
+        TabOrder = 7
+        OnClick = btnPhotoServerClick
       end
     end
     object Panel4: TPanel
@@ -200,6 +235,7 @@ object BuildSheet: TBuildSheet
         Flat = True
         Options = [goFixedVertLine, goFixedHorzLine, goVertLine, goHorzLine, goColSizing, goEditing, goTabs, goAlwaysShowEditor, goThumbTracking, goSmoothScroll, goSelectionActive]
         TabOrder = 0
+        OnClick = StringGrid1Click
         OnSetEditText = StringGrid1SetEditText
         ColWidths = (
           64
@@ -261,6 +297,20 @@ object BuildSheet: TBuildSheet
   object ApplicationProperties1: TApplicationProperties
     OnIdle = ApplicationProperties1Idle
     Left = 68
+    Top = 148
+  end
+  object tmrGridNavigate: TTimer
+    Enabled = False
+    Interval = 1
+    OnTimer = tmrGridNavigateTimer
+    Left = 160
+    Top = 148
+  end
+  object tmrSavedCaption: TTimer
+    Enabled = False
+    Interval = 5000
+    OnTimer = tmrSavedCaptionTimer
+    Left = 252
     Top = 148
   end
 end

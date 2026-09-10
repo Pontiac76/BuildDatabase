@@ -27,6 +27,7 @@ type
     MainMenu1: TMainMenu;
     Memo1: TMemo;
     MenuItem1: TMenuItem;
+    mnuOpenSelectedBuildSheet: TMenuItem;
     mnuExportBuild: TMenuItem;
     MenuItem4: TMenuItem;
     mnuPasteImage: TMenuItem;
@@ -88,6 +89,7 @@ type
     procedure lbBuildListMouseDown (Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: integer);
     procedure Memo1Exit (Sender: TObject);
     procedure MenuItem1Click (Sender: TObject);
+    procedure mnuOpenSelectedBuildSheetClick (Sender: TObject);
     procedure mnuExportBuildClick (Sender: TObject);
     procedure MenuItem4Click (Sender: TObject);
     procedure mnuExitClick (Sender: TObject);
@@ -172,6 +174,9 @@ type
     function GetImageDimensions (Stream: TMemoryStream): TPoint;
     function ConvertToSupportedImage (out Stream: tMemoryStream; out ImgFmt: string): boolean;
   public
+    procedure StartPhonePhotoServerForCurrentSelection;
+    function SelectBuildByQR(const BuildQR: string): Boolean;
+    function SelectComponentByQR(const ComponentName, ComponentQR: string): Boolean;
     function GetBuildIdForComponent (ComponentID: integer; Component: string): integer;
     function GetBuildNameForID (ID: integer): string;
   end;
@@ -655,6 +660,7 @@ procedure TForm1.mnuBuildListClick (Sender: TObject);
 *)
 begin
   mnuDeleteBuild.Enabled := lbBuildList.ItemIndex <> -1;
+  mnuOpenSelectedBuildSheet.Enabled := lbBuildList.ItemIndex <> -1;
 end;
 
 procedure TForm1.mnuRenameBuildClick (Sender: TObject);
@@ -942,16 +948,129 @@ procedure TForm1.lbBuildListClick (Sender: TObject);
 @AI:params: Sender: The object that triggered the event, typically the list box itself.
 @AI:returns:
 *)
+var
+  q: TSQLQuery;
+  BuildQR: string;
 begin
   PopulateBuildSummary(BuildSummaryUseShortLabels);
   LoadBuildDetails;
   PageControl1Change(nil);
   ReloadImagesOnScreen;
+
+  if BuildSheet.Visible and (lbBuildList.ItemIndex >= 0) then begin
+    q := NewQuery(S3DB);
+    try
+      q.SQL.Text := 'select BuildQR from BuildList where BuildID=:BuildID';
+      q.ParamByName('BuildID').AsInteger := O2I(lbBuildList.Items.Objects[lbBuildList.ItemIndex]);
+      q.Open;
+      if not q.EOF then begin
+        BuildQR := q.FieldByName('BuildQR').AsString;
+        BuildSheet.LoadBuildQR(BuildQR);
+      end;
+    finally
+      EndQuery(q);
+    end;
+  end;
 end;
 
 procedure TForm1.lbBuildListMouseDown (Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: integer);
 begin
   lbBuildList.ItemIndex := lbBuildList.GetIndexAtY(y);
+end;
+
+function TForm1.SelectBuildByQR(const BuildQR: string): Boolean;
+(*
+@AI:summary: Selects a build in the main Build List by QR code for modeless Build Sheet navigation.
+*)
+var
+  q: TSQLQuery;
+  BuildID: Integer;
+begin
+  Result := False;
+  if Trim(BuildQR) = '' then Exit;
+
+  q := NewQuery(S3DB);
+  try
+    q.SQL.Text := 'select BuildID from BuildList where BuildQR=:QR';
+    q.ParamByName('QR').AsString := Trim(BuildQR);
+    q.Open;
+    if q.EOF then Exit;
+    BuildID := q.FieldByName('BuildID').AsInteger;
+  finally
+    EndQuery(q);
+  end;
+
+  if (lbBuildList.ItemIndex >= 0) and (O2I(lbBuildList.Items.Objects[lbBuildList.ItemIndex]) = BuildID) then begin
+    Result := True;
+    Exit;
+  end;
+
+  if lbBuildList.Items.IndexOfObject(I2O(BuildID)) < 0 then
+    RefreshBuildList;
+  lbBuildList.ItemIndex := lbBuildList.Items.IndexOfObject(I2O(BuildID));
+  if lbBuildList.ItemIndex >= 0 then begin
+    lbBuildListClick(lbBuildList);
+    Result := True;
+  end;
+end;
+
+function TForm1.SelectComponentByQR(const ComponentName, ComponentQR: string): Boolean;
+(*
+@AI:summary: Switches to a component tab and selects a component row by QR code for Build Sheet navigation/photo review.
+*)
+var
+  SafeName: string;
+  q: TSQLQuery;
+  DeviceID, TabIndex, ItemIndex, p: Integer;
+  Tab: TTabSheet;
+  lb: TListBox;
+begin
+  Result := False;
+  SafeName := SafeComponentName(ComponentName);
+  if (SafeName = '') or (Trim(ComponentQR) = '') then Exit;
+
+  q := NewQuery(S3DB);
+  try
+    q.SQL.Text := 'select DeviceID from Device_' + SafeName + ' where QRCode=:QR';
+    q.ParamByName('QR').AsString := Trim(ComponentQR);
+    q.Open;
+    if q.EOF then Exit;
+    DeviceID := q.FieldByName('DeviceID').AsInteger;
+  finally
+    EndQuery(q);
+  end;
+
+  if not SameText(PageControl1.ActivePage.Caption, ComponentName) then begin
+    TabIndex := -1;
+    for p := 0 to PageControl1.PageCount - 1 do
+      if SameText(PageControl1.Pages[p].Caption, ComponentName) then begin
+        TabIndex := p;
+        Break;
+      end;
+    if TabIndex < 0 then Exit;
+    PageControl1.ActivePageIndex := TabIndex;
+    PageControl1Change(PageControl1);
+  end;
+
+  Tab := PageControl1.ActivePage;
+  lb := TListBox(FindAnyComponent(Tab, 'lb__' + SafeName + '__List'));
+  if not Assigned(lb) then Exit;
+
+  ItemIndex := lb.Items.IndexOfObject(I2O(DeviceID));
+  if ItemIndex < 0 then begin
+    LoadDataIntoListBox(lb, 'Device_' + SafeName);
+    ItemIndex := lb.Items.IndexOfObject(I2O(DeviceID));
+  end;
+  if ItemIndex < 0 then Exit;
+
+  if (lb.ItemIndex >= 0) and (O2I(lb.Items.Objects[lb.ItemIndex]) = DeviceID) then begin
+    Result := True;
+    Exit;
+  end;
+
+  lb.ItemIndex := ItemIndex;
+  ListBoxClick(lb);
+  Result := True;
 end;
 
 procedure TForm1.Memo1Exit (Sender: TObject);
@@ -979,10 +1098,39 @@ end;
 procedure TForm1.MenuItem1Click (Sender: TObject);
 begin
   BuildSheet.btnClearSheet.Click;
-  if BuildSheet.ShowModal = mrOk then begin
-    PageControl1.PageIndex := 0;
-    MenuItem8Click(nil);
+  BuildSheet.Show;
+  BuildSheet.BringToFront;
+end;
+
+procedure TForm1.mnuOpenSelectedBuildSheetClick (Sender: TObject);
+(*
+@AI:summary: Opens the modeless Build Sheet form and loads the selected build QR.
+@AI:notes: The Build Sheet stays open while the main form is used; selected-build changes can reload it without saving.
+*)
+var
+  BuildID: integer;
+  BuildQR: string;
+  q: TSQLQuery;
+begin
+  if lbBuildList.ItemIndex = -1 then Exit;
+
+  BuildID := O2I(lbBuildList.Items.Objects[lbBuildList.ItemIndex]);
+  BuildSheet.btnClearSheet.Click;
+
+  q := NewQuery(S3DB);
+  try
+    q.SQL.Text := 'select BuildQR from BuildList where BuildID=:BuildID';
+    q.ParamByName('BuildID').AsInteger := BuildID;
+    q.Open;
+    if q.EOF then Exit;
+    BuildQR := q.FieldByName('BuildQR').AsString;
+  finally
+    EndQuery(q);
   end;
+
+  BuildSheet.LoadBuildQR(BuildQR);
+  BuildSheet.Show;
+  BuildSheet.BringToFront;
 end;
 
 procedure TForm1.mnuExportBuildClick (Sender: TObject);
@@ -995,7 +1143,11 @@ begin
 
 end;
 
-procedure TForm1.mnuPhonePhotoServerClick (Sender: TObject);
+procedure TForm1.StartPhonePhotoServerForCurrentSelection;
+(*
+@AI:summary: Starts the modal phone photo server for the currently selected build/component on the main form.
+@AI:notes: Exposed so modeless Build Sheet can request photo intake after navigating the main form to the selected grid row.
+*)
 var
   ActiveLB: TListBox;
   ActivePage: TTabSheet;
@@ -1024,6 +1176,11 @@ begin
   TargetID := O2I(ActiveLB.Items.Objects[ActiveLB.ItemIndex]);
   TargetTitle := ActiveLB.Items[ActiveLB.ItemIndex];
   ShowPhonePhotoServer(TargetType, TargetID, TargetTitle, @SavePhonePhotoUpload);
+end;
+
+procedure TForm1.mnuPhonePhotoServerClick (Sender: TObject);
+begin
+  StartPhonePhotoServerForCurrentSelection;
 end;
 
 procedure TForm1.mnuExitClick (Sender: TObject);

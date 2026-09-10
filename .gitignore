@@ -62,6 +62,9 @@ desktop.ini
 *.orig
 *.rej
 
+# Runtime scratch directory for photo editor round-trip
+Editing/
+
 # Optional: Lazarus IDE user prefs (uncomment to ignore user configs)
 # *.lps
 sql_debug.txt

@@ -112,7 +112,7 @@ object Form1: TForm1
             Width = 306
             HorzScrollBar.Page = 150
             HorzScrollBar.Tracking = True
-            VertScrollBar.Page = 23
+            VertScrollBar.Page = 27
             VertScrollBar.Tracking = True
             Align = alClient
             AutoSize = True
@@ -270,6 +270,11 @@ object Form1: TForm1
         Caption = 'Build Sheet'
         ShortCut = 121
         OnClick = MenuItem1Click
+      end
+      object mnuOpenSelectedBuildSheet: TMenuItem
+        Caption = 'Sheet for Selected Build'
+        ShortCut = 8313
+        OnClick = mnuOpenSelectedBuildSheetClick
       end
       object mnuAddBuild: TMenuItem
         Caption = 'Create New Build'
